@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from bs4 import BeautifulSoup
-from curl_cffi import requests
+import requests as std_requests
 import urllib.parse
 import unicodedata
 import base64
@@ -47,7 +47,6 @@ MAPA_BODEGAS_EXCEL = {
 }
 LISTA_TIENDAS = list(MAPA_BODEGAS_EXCEL.keys())
 
-# --- MOTOR DE SINCRONIZACIÓN PERMANENTE EN LA NUBE (GITHUB API) ---
 def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en vivo desde PERFUMA Admin"):
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
@@ -63,7 +62,7 @@ def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en viv
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json"
         }
-        r_get = requests.get(f"{url_api}?ref={branch}", headers=headers, timeout=15)
+        r_get = std_requests.get(f"{url_api}?ref={branch}", headers=headers, timeout=15)
         sha_actual = r_get.json().get("sha") if r_get.status_code == 200 else None
 
         with open(ruta_archivo, "rb") as f:
@@ -77,7 +76,7 @@ def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en viv
         if sha_actual:
             payload["sha"] = sha_actual
 
-        r_put = requests.put(url_api, headers=headers, data=json.dumps(payload), timeout=25)
+        r_put = std_requests.put(url_api, headers=headers, data=json.dumps(payload), timeout=25)
         return r_put.status_code in [200, 201]
     except Exception:
         return False
@@ -153,14 +152,28 @@ def extraer_datos_fragrantica(url):
     foto_url = f"https://fimgs.net/mdimg/perfume/375x500.{m_id.group(1)}.jpg" if m_id else ""
     cabeceras = {"Accept-Language": "es-ES,es;q=0.9,en;q=0.8", "Referer": "https://www.google.com/"}
     html_texto = ""
-    for navegador in ["chrome116", "chrome120", "chrome", "safari15_5"]:
+
+    try:
+        from curl_cffi import requests as cffi_req
+        for navegador in ["chrome116", "chrome120", "chrome", "safari15_5"]:
+            try:
+                resp = cffi_req.get(url, impersonate=navegador, headers=cabeceras, timeout=15)
+                if resp.status_code == 200 and "just a moment" not in resp.text.lower():
+                    html_texto = resp.text
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    if not html_texto:
         try:
-            resp = requests.get(url, impersonate=navegador, headers=cabeceras, timeout=15)
-            if resp.status_code == 200 and "just a moment" not in resp.text.lower():
-                html_texto = resp.text
-                break
+            cab_std = {**cabeceras, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            r_std = std_requests.get(url, headers=cab_std, timeout=15)
+            if r_std.status_code == 200 and "just a moment" not in r_std.text.lower():
+                html_texto = r_std.text
         except Exception:
-            continue
+            pass
 
     if not html_texto:
         return None, "Fragrantica bloqueó momentáneamente la lectura automática. Intenta en unos segundos."
@@ -251,25 +264,30 @@ def encontrar_excel_relbase():
         return archivos[0]
     return None
 
+@st.cache_data(show_spinner=False)
+def leer_excel_relbase_cacheado(ruta_excel, fecha_modificacion):
+    df_raw = pd.read_excel(ruta_excel, sheet_name='Stock actual', skiprows=5)
+    df_raw.columns = [str(c).strip() for c in df_raw.columns]
+    df_raw['SKU_Clave'] = df_raw['Código'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
+    return df_raw
+
 def filtrar_inventario_por_tienda(df_catalogo, tienda_sel):
     ruta_excel = encontrar_excel_relbase()
-    if not ruta_excel:
+    if not ruta_excel or not os.path.exists(ruta_excel):
         return df_catalogo.copy()
 
     try:
-        df_raw = pd.read_excel(ruta_excel, sheet_name='Stock actual', skiprows=5)
-        df_raw.columns = [str(c).strip() for c in df_raw.columns]
+        mtime = os.path.getmtime(ruta_excel)
+        df_raw = leer_excel_relbase_cacheado(ruta_excel, mtime).copy()
         col_bodega = MAPA_BODEGAS_EXCEL.get(tienda_sel, "")
-        
+
         if col_bodega not in df_raw.columns:
             return df_catalogo.copy()
 
-        df_raw['SKU_Clave'] = df_raw['Código'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
         df_raw[col_bodega] = pd.to_numeric(df_raw[col_bodega], errors='coerce').fillna(0)
-
         stock_por_sku = df_raw.groupby('SKU_Clave')[col_bodega].sum().to_dict()
         df_filtrado = df_catalogo.copy()
-        
+
         def verificar_stock(sku_cat):
             s_limpio = str(sku_cat).strip().replace('.0', '').lstrip('0')
             if s_limpio in stock_por_sku:
@@ -338,7 +356,7 @@ for k, v in [("acordes_buscados", []), ("nombre_referencia", ""), ("genero_refer
 
 df_db_bruto = cargar_db()
 
-col_tienda_top, col_espacio_top, col_btn_admin = st.columns([2.2, 3.0, 1.2], vertical_alignment="bottom")
+col_tienda_top, col_espacio_top, col_btn_admin = st.columns([2.2, 3.0, 1.2])
 
 with col_tienda_top:
     tienda_seleccionada = st.selectbox("🏪 Sucursal / Tienda Activa:", LISTA_TIENDAS, index=0)
@@ -347,6 +365,7 @@ with col_tienda_top:
         st.session_state.tienda_ant = tienda_seleccionada
 
 with col_btn_admin:
+    st.write("")
     if not st.session_state.admin_autenticado:
         if st.button("🔐 Acceso Admin", type="primary", use_container_width=True):
             st.session_state.mostrar_login_admin = not st.session_state.mostrar_login_admin
@@ -358,8 +377,9 @@ with col_btn_admin:
 
 if st.session_state.mostrar_login_admin and not st.session_state.admin_autenticado:
     with st.container(border=True):
-        c_p1, c_p2 = st.columns([3, 1], vertical_alignment="bottom")
+        c_p1, c_p2 = st.columns([3, 1])
         clave_ingresada = c_p1.text_input("Ingresa la contraseña de administrador:", type="password", key="input_pass_admin")
+        c_p2.write("")
         if c_p2.button("Desbloquear", type="primary", use_container_width=True):
             if clave_ingresada == "Julieta25":
                 st.session_state.admin_autenticado = True
@@ -389,7 +409,7 @@ with tab_mostrador:
         acordes_man = c_m1.text_input("Acordes separados por coma:", placeholder="cítrico, afrutados, dulce, almizclado")
         gen_man = c_m2.selectbox("Género buscado:", ["Para Hombres", "Para Hombres y Mujeres", "Para Mujeres"])
 
-    c_btn, c_flt = st.columns([1.0, 3.2], vertical_alignment="center")
+    c_btn, c_flt = st.columns([1.0, 3.2])
     buscar_click = c_btn.button("Buscar en Stock", type="primary", use_container_width=True)
     filtro_categoria = c_flt.radio("Categoría:", ["Árabe/Diseñador", "Árabe", "Diseñador"], horizontal=True, label_visibility="collapsed")
 
@@ -412,7 +432,7 @@ with tab_mostrador:
         gen_ref = detectar_genero_web(st.session_state.genero_referencia)
 
         if gen_ref == "Para Hombres y Mujeres":
-            c_r, c_g, c_f = st.columns([3.2, 2.6, 0.8], vertical_alignment="center")
+            c_r, c_g, c_f = st.columns([3.2, 2.6, 0.8])
             op_g = c_g.radio("👤 Recomendación para:", ["Hombre", "Mujer", "Unisex"], horizontal=True)
             if op_g != st.session_state.gen_uni_ant:
                 st.session_state.indice_rec = 0
@@ -425,7 +445,7 @@ with tab_mostrador:
             else:
                 genero_objetivo = "Para Hombres y Mujeres"
         else:
-            c_r, _, c_f = st.columns([4.5, 1.5, 0.8], vertical_alignment="center")
+            c_r, _, c_f = st.columns([4.5, 1.5, 0.8])
             genero_objetivo = gen_ref
 
         c_r.success(f"**Referencia:** {st.session_state.nombre_referencia}  |  **Género en Fragrantica:** `{gen_ref}`")
@@ -523,13 +543,12 @@ if tab_admin is not None:
             st.warning("⚠️ Aún no has subido un archivo Excel de Relbase. Súbelo en la sección de abajo para activar el radar.")
         else:
             try:
-                df_ex_raw = pd.read_excel(ruta_ex_radar, sheet_name='Stock actual', skiprows=5)
-                df_ex_raw.columns = [str(c).strip() for c in df_ex_raw.columns]
+                mtime_r = os.path.getmtime(ruta_ex_radar)
+                df_ex_raw = leer_excel_relbase_cacheado(ruta_ex_radar, mtime_r).copy()
                 col_b_radar = MAPA_BODEGAS_EXCEL.get(tienda_seleccionada, "")
 
                 if col_b_radar in df_ex_raw.columns:
                     df_ex_raw = df_ex_raw[df_ex_raw['Producto'].apply(es_perfume_valido_relbase)].copy()
-                    df_ex_raw['SKU_Clave'] = df_ex_raw['Código'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
                     df_ex_raw[col_b_radar] = pd.to_numeric(df_ex_raw[col_b_radar], errors='coerce').fillna(0)
 
                     df_con_stock = df_ex_raw[df_ex_raw[col_b_radar] > 0].copy()
@@ -551,7 +570,7 @@ if tab_admin is not None:
                         tabla_mostrar = df_faltantes[['Código', 'Producto', 'Categoría', col_b_radar, 'Precio neto']].copy()
                         tabla_mostrar.columns = ['SKU / Código', 'Nombre en Relbase', 'Marca / Categoría', 'Stock en Tienda', 'Precio Neto']
 
-                        c_info_f, c_btn_desc_f = st.columns([2.2, 1.2], vertical_alignment="center")
+                        c_info_f, c_btn_desc_f = st.columns([2.2, 1.2])
                         with c_info_f:
                             st.info(f"📋 Se encontraron **{len(df_faltantes)} perfumes con stock en `{tienda_seleccionada}`** que aún no están en tu `catalogo_maestro.csv`:")
                         with c_btn_desc_f:
@@ -578,6 +597,7 @@ if tab_admin is not None:
                 with st.spinner("Actualizando y sincronizando stock con todas las sucursales..."):
                     with open(ARCHIVO_RELBASE, "wb") as f:
                         f.write(archivo_relbase_subido.getbuffer())
+                    leer_excel_relbase_cacheado.clear()
                     sincronizar_archivo_nube(ARCHIVO_RELBASE, "Actualización de stock Relbase")
                 st.success("✅ ¡Reporte de Relbase actualizado en vivo para todas las sucursales!")
                 st.rerun()
@@ -623,7 +643,7 @@ if tab_admin is not None:
                         st.rerun()
 
         st.divider()
-        c_tit_inv, c_btn_inv = st.columns([2.2, 1.2], vertical_alignment="center")
+        c_tit_inv, c_btn_inv = st.columns([2.2, 1.2])
         with c_tit_inv:
             st.markdown(f"### 📋 Inventario Total en tu Base de Datos ({len(df_db_bruto)} perfumes)")
         with c_btn_inv:

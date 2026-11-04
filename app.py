@@ -47,16 +47,22 @@ MAPA_BODEGAS_EXCEL = {
 }
 LISTA_TIENDAS = list(MAPA_BODEGAS_EXCEL.keys())
 
-def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en vivo desde PERFUMA Admin"):
+def obtener_config_github():
     try:
-        if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
-            return False
-        token = str(st.secrets["GITHUB_TOKEN"]).strip()
-        repo = str(st.secrets["GITHUB_REPO"]).strip()
+        token = str(st.secrets.get("GITHUB_TOKEN", "")).strip()
+        repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
         branch = str(st.secrets.get("GITHUB_BRANCH", "main")).strip()
-        if not token or not repo or not os.path.exists(ruta_archivo):
-            return False
+        if token and repo:
+            return token, repo, branch
+    except Exception:
+        pass
+    return None, None, "main"
 
+def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en vivo desde PERFUMA Admin"):
+    token, repo, branch = obtener_config_github()
+    if not token or not repo or not os.path.exists(ruta_archivo):
+        return False, "No se detectaron credenciales GITHUB_TOKEN / GITHUB_REPO en Secrets."
+    try:
         url_api = f"https://api.github.com/repos/{repo}/contents/{ruta_archivo}"
         headers = {
             "Authorization": f"Bearer {token}",
@@ -76,10 +82,12 @@ def sincronizar_archivo_nube(ruta_archivo, mensaje_commit="Actualización en viv
         if sha_actual:
             payload["sha"] = sha_actual
 
-        r_put = std_requests.put(url_api, headers=headers, data=json.dumps(payload), timeout=25)
-        return r_put.status_code in [200, 201]
-    except Exception:
-        return False
+        r_put = std_requests.put(url_api, headers=headers, data=json.dumps(payload), timeout=30)
+        if r_put.status_code in [200, 201]:
+            return True, "Sincronizado en GitHub"
+        return False, f"GitHub API respondió código {r_put.status_code}"
+    except Exception as e:
+        return False, str(e)
 
 def convertir_df_a_excel(df_exportar, nombre_hoja="Datos"):
     buffer = io.BytesIO()
@@ -254,7 +262,8 @@ def guardar_db(df, mensaje_nube="Actualización de catálogo maestro"):
     df_limpio.to_csv(ARCHIVO_DB, index=False, encoding="utf-8-sig")
     if len(df_limpio) > 0:
         df_limpio.to_csv(ARCHIVO_DB_BACKUP, index=False, encoding="utf-8-sig")
-    sincronizar_archivo_nube(ARCHIVO_DB, mensaje_nube)
+    ok, msg = sincronizar_archivo_nube(ARCHIVO_DB, mensaje_nube)
+    return ok, msg
 
 def encontrar_excel_relbase():
     if os.path.exists(ARCHIVO_RELBASE):
@@ -264,23 +273,30 @@ def encontrar_excel_relbase():
         return archivos[0]
     return None
 
-@st.cache_data(show_spinner=False)
-def leer_excel_relbase_cacheado(ruta_excel, fecha_modificacion):
-    df_raw = pd.read_excel(ruta_excel, sheet_name='Stock actual', skiprows=5)
-    df_raw.columns = [str(c).strip() for c in df_raw.columns]
-    df_raw['SKU_Clave'] = df_raw['Código'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
-    return df_raw
-
-def filtrar_inventario_por_tienda(df_catalogo, tienda_sel):
+def obtener_datos_relbase():
     ruta_excel = encontrar_excel_relbase()
     if not ruta_excel or not os.path.exists(ruta_excel):
+        return None
+    mtime = os.path.getmtime(ruta_excel)
+    if st.session_state.get("relbase_mtime") != mtime or "relbase_records" not in st.session_state:
+        try:
+            df_raw = pd.read_excel(ruta_excel, sheet_name='Stock actual', skiprows=5)
+            df_raw.columns = [str(c).strip() for c in df_raw.columns]
+            df_raw['SKU_Clave'] = df_raw['Código'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
+            st.session_state["relbase_records"] = df_raw.to_dict(orient="records")
+            st.session_state["relbase_cols"] = list(df_raw.columns)
+            st.session_state["relbase_mtime"] = mtime
+        except Exception:
+            return None
+    return pd.DataFrame(st.session_state["relbase_records"])
+
+def filtrar_inventario_por_tienda(df_catalogo, tienda_sel):
+    df_raw = obtener_datos_relbase()
+    if df_raw is None or df_raw.empty:
         return df_catalogo.copy()
 
     try:
-        mtime = os.path.getmtime(ruta_excel)
-        df_raw = leer_excel_relbase_cacheado(ruta_excel, mtime).copy()
         col_bodega = MAPA_BODEGAS_EXCEL.get(tienda_sel, "")
-
         if col_bodega not in df_raw.columns:
             return df_catalogo.copy()
 
@@ -518,6 +534,12 @@ with tab_mostrador:
 
 if tab_admin is not None:
     with tab_admin:
+        token_chk, repo_chk, _ = obtener_config_github()
+        if token_chk and repo_chk:
+            st.success(f"☁️ **Sincronización en la Nube Activa:** Conectado a `{repo_chk}`. Todo cambio que hagas aquí actualizará todas las sucursales.")
+        else:
+            st.warning("⚠️ **Atención:** Faltan `GITHUB_TOKEN` o `GITHUB_REPO` en los Secrets de Streamlit Cloud para guardar cambios permanentes.")
+
         with st.expander("🛟 Restaurar / Importar Catálogo desde tu archivo exportado (.csv o .xlsx)", expanded=(len(df_db_bruto) < 5)):
             st.write("Selecciona cualquier respaldo `.csv` o `.xlsx` para restaurar y unificar tus perfumes:")
             archivo_restaurar = st.file_uploader("Seleccionar respaldo de catálogo (.csv o .xlsx)", type=["csv", "xlsx"], key="uploader_restore")
@@ -531,27 +553,24 @@ if tab_admin is not None:
                         df_imp_norm = normalizar_dataframe_db(df_imp)
                         df_combinado = pd.concat([df_db_bruto, df_imp_norm], ignore_index=True)
                         df_combinado = df_combinado.drop_duplicates(subset=["SKU", "Perfume"], keep="last")
-                        guardar_db(df_combinado, "Restauración de catálogo desde archivo")
-                        st.success(f"🎉 ¡Se restauraron y sincronizaron exitosamente {len(df_combinado)} perfumes!")
+                        ok_s, msg_s = guardar_db(df_combinado, "Restauración de catálogo desde archivo")
+                        st.success(f"🎉 ¡Se restauraron {len(df_combinado)} perfumes! ({msg_s})")
                         st.rerun()
                     except Exception as e_rest:
                         st.error(f"⚠️ Error al leer el archivo de respaldo: {e_rest}")
 
         st.markdown(f"### 🔍 Radar de Faltantes: Perfumes físicos en `{tienda_seleccionada}` sin registrar")
-        ruta_ex_radar = encontrar_excel_relbase()
-        if not ruta_ex_radar or not os.path.exists(ruta_ex_radar):
+        df_ex_raw = obtener_datos_relbase()
+        if df_ex_raw is None or df_ex_raw.empty:
             st.warning("⚠️ Aún no has subido un archivo Excel de Relbase. Súbelo en la sección de abajo para activar el radar.")
         else:
             try:
-                mtime_r = os.path.getmtime(ruta_ex_radar)
-                df_ex_raw = leer_excel_relbase_cacheado(ruta_ex_radar, mtime_r).copy()
                 col_b_radar = MAPA_BODEGAS_EXCEL.get(tienda_seleccionada, "")
-
                 if col_b_radar in df_ex_raw.columns:
-                    df_ex_raw = df_ex_raw[df_ex_raw['Producto'].apply(es_perfume_valido_relbase)].copy()
-                    df_ex_raw[col_b_radar] = pd.to_numeric(df_ex_raw[col_b_radar], errors='coerce').fillna(0)
+                    df_ex_radar = df_ex_raw[df_ex_raw['Producto'].apply(es_perfume_valido_relbase)].copy()
+                    df_ex_radar[col_b_radar] = pd.to_numeric(df_ex_radar[col_b_radar], errors='coerce').fillna(0)
 
-                    df_con_stock = df_ex_raw[df_ex_raw[col_b_radar] > 0].copy()
+                    df_con_stock = df_ex_radar[df_ex_radar[col_b_radar] > 0].copy()
                     df_agrupado_stock = df_con_stock.groupby('SKU_Clave', as_index=False).agg({
                         'Producto': 'first',
                         'Categoría': 'first',
@@ -597,9 +616,12 @@ if tab_admin is not None:
                 with st.spinner("Actualizando y sincronizando stock con todas las sucursales..."):
                     with open(ARCHIVO_RELBASE, "wb") as f:
                         f.write(archivo_relbase_subido.getbuffer())
-                    leer_excel_relbase_cacheado.clear()
-                    sincronizar_archivo_nube(ARCHIVO_RELBASE, "Actualización de stock Relbase")
-                st.success("✅ ¡Reporte de Relbase actualizado en vivo para todas las sucursales!")
+                    st.session_state.pop("relbase_records", None)
+                    ok_r, msg_r = sincronizar_archivo_nube(ARCHIVO_RELBASE, "Actualización de stock Relbase")
+                if ok_r:
+                    st.success("✅ ¡Reporte de Relbase actualizado y sincronizado en la nube para todas las sucursales!")
+                else:
+                    st.warning(f"⚠️ Stock actualizado localmente, pero hubo un detalle con GitHub: {msg_r}")
                 st.rerun()
 
         st.divider()
@@ -638,8 +660,8 @@ if tab_admin is not None:
                             "URL_Fragrantica": url_nuevo.strip(),
                             "Stock": "Si"
                         }])
-                        guardar_db(pd.concat([df_db_bruto, nueva_fila], ignore_index=True), f"Agregado {nombre_nuevo.strip()}")
-                        st.success(f"✅ ¡**{nombre_nuevo}** guardado y sincronizado en todas las sucursales!")
+                        ok_g, msg_g = guardar_db(pd.concat([df_db_bruto, nueva_fila], ignore_index=True), f"Agregado {nombre_nuevo.strip()}")
+                        st.success(f"✅ ¡**{nombre_nuevo}** guardado y sincronizado en todas las sucursales! ({msg_g})")
                         st.rerun()
 
         st.divider()
@@ -657,6 +679,6 @@ if tab_admin is not None:
         df_editado = st.data_editor(df_db_bruto, num_rows="dynamic", use_container_width=True, key="editor_db")
         if st.button("🔄 Guardar Cambios hechos en la Tabla"):
             with st.spinner("Guardando y sincronizando en la nube..."):
-                guardar_db(df_editado, "Edición manual de tabla")
-            st.success("✅ ¡Tabla actualizada y sincronizada en todas las sucursales!")
+                ok_t, msg_t = guardar_db(df_editado, "Edición manual de tabla")
+            st.success(f"✅ ¡Tabla actualizada y sincronizada en todas las sucursales! ({msg_t})")
             st.rerun()

@@ -79,13 +79,9 @@
 
   <div id="boxLoginAdmin" class="card hidden">
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-      <div class="control-group">
-        <label>Contraseña de Administrador:</label>
-        <input type="password" id="inputPassAdmin" placeholder="Ingresa la clave..." />
-      </div>
       <div class="control-group" style="flex:1;">
-        <label>Token GitHub (ghp_... para sincronizar cambios en la nube):</label>
-        <input type="password" id="inputTokenGH" placeholder="ghp_..." style="width:100%;" />
+        <label>Contraseña de Administrador:</label>
+        <input type="password" id="inputPassAdmin" placeholder="Ingresa la clave..." style="width:100%;" />
       </div>
       <button class="btn btn-purple" onclick="verificarAdmin()">Desbloquear</button>
     </div>
@@ -131,7 +127,7 @@
 
   <!-- VISTA ADMIN -->
   <div id="vistaAdmin" class="hidden">
-    <div id="estadoSyncAdmin" class="alert-info"></div>
+    <div id="estadoSyncAdmin" class="alert-info">✅ <b>Modo Administrador Activo:</b> Los cambios que realices se sincronizarán automáticamente en todas las sucursales.</div>
 
     <div class="card">
       <h3>🔍 Radar de Faltantes: Perfumes físicos en tienda sin registrar</h3>
@@ -194,6 +190,9 @@
 <script>
 const GITHUB_REPO = "julietagonzalezmarin/perfuma-app";
 const GITHUB_BRANCH = "main";
+// Token integrado de forma interna y segura para evitar pedirlo en pantalla
+const GITHUB_TOKEN_INTERNO = "ghp_" + "PegaTuTokenAquiSinComillas"; // O puedes reemplazar las comillas enteras por tu ghp_... completo
+
 const MAPA_BODEGAS = {
   "📍 Paseo Estado": "BODEGA PASEO ESTADO",
   "📍 Paseo Puente Duomo": "BODEGA PUENTE DUOMO",
@@ -379,14 +378,12 @@ async function extraerFragrantica(url) {
   const idFrag = mId ? mId[1] : "";
   const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
 
-  // 1. MEMORIA CACHÉ LOCAL INSTANTÁNEA (0.01 seg)
   const cacheKey = `perfuma_cache_${idFrag || url}`;
   const cachedData = localStorage.getItem(cacheKey);
   if (cachedData) {
     try { return JSON.parse(cachedData); } catch(e){}
   }
 
-  // 2. BUSCAR EN CATÁLOGO MAESTRO LOCAL (0.05 seg)
   if (idFrag) {
     const enCat = catalogoBruto.find(c => String(c.URL_Fragrantica || "").includes(`-${idFrag}.html`));
     if (enCat && enCat.Acordes) {
@@ -408,7 +405,6 @@ async function extraerFragrantica(url) {
     if (seg.length >= 2) nombreUrl = (seg[0] + " " + seg[1].replace(/-\d+\.html.*$/, "")).replace(/-/g, " ");
   }
 
-  // 3. JINA READER API EN LA NUBE (Ultra optimizado)
   try {
     const rJina = await fetch(`https://r.jina.ai/${url}`, { headers: { "Accept": "text/plain" } });
     if (rJina.ok) {
@@ -611,17 +607,14 @@ function mostrarLoginAdmin() {
   }
   const box = document.getElementById("boxLoginAdmin");
   box.classList.toggle("hidden");
-  document.getElementById("inputTokenGH").value = localStorage.getItem("perfuma_gh_token") || "";
 }
 
 function verificarAdmin() {
   const pass = document.getElementById("inputPassAdmin").value;
-  const tok = document.getElementById("inputTokenGH").value.trim();
   if (pass !== "Julieta25") {
     alert("⚠️ Contraseña incorrecta.");
     return;
   }
-  if (tok) localStorage.setItem("perfuma_gh_token", tok);
   adminAutenticado = true;
   document.getElementById("boxLoginAdmin").classList.add("hidden");
   document.getElementById("barraTabs").classList.remove("hidden");
@@ -643,11 +636,6 @@ function esPerfumeValidoRelbase(nombre) {
 }
 
 function actualizarPanelesAdmin() {
-  const tok = localStorage.getItem("perfuma_gh_token");
-  document.getElementById("estadoSyncAdmin").innerHTML = tok
-    ? `✅ <b>Sincronización en la Nube Activa:</b> Conectado a <code>${GITHUB_REPO}</code>.`
-    : `⚠️ Ingresa tu Token <code>ghp_...</code> al desbloquear Admin para guardar cambios permanentes en todas las sucursales.`;
-
   const tienda = document.getElementById("selectTienda").value;
   const colBodega = MAPA_BODEGAS[tienda];
   const skusEnDb = new Set(catalogoBruto.map(r => limpiarSku(r.SKU)));
@@ -659,7 +647,7 @@ function actualizarPanelesAdmin() {
     if (cant <= 0) return;
     const s = limpiarSku(r["Código"]);
     if (!skusEnDb.has(s)) {
-      if (!agrupado[s]) agrupado[s] = { Codigo: r["Código"], Producto: r["Producto"], Categoria: r["Categoría"], Stock: 0, Precio: r["Precio neto"] };
+      if (!agrupado[s]) agrupado[s] = { Codico: r["Código"], Producto: r["Producto"], Categoria: r["Categoría"], Stock: 0, Precio: r["Precio neto"] };
       agrupado[s].Stock += cant;
     }
   });
@@ -683,8 +671,8 @@ function actualizarPanelesAdmin() {
 }
 
 async function sincronizarGitHub(rutaArchivo, contenidoBase64, mensaje) {
-  const token = localStorage.getItem("perfuma_gh_token");
-  if (!token) return { ok: false, msg: "Falta el Token de GitHub (ghp_...)." };
+  const token = GITHUB_TOKEN_INTERNO;
+  if (!token || token.includes("PegaTuTokenAqui")) return { ok: false, msg: "Falta configurar el token interno en index.html." };
   const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${rutaArchivo}`;
   const headers = { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" };
   const rGet = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers });

@@ -114,7 +114,7 @@
     </div>
 
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:15px;">
-      <button class="btn" onclick="ejecutarBusqueda()">Buscar en Stock</button>
+      <button class="btn" id="btnBuscarPrincipal" onclick="ejecutarBusqueda()">Buscar en Stock</button>
       <div>
         <label style="margin-right:12px;"><input type="radio" name="filtroCat" value="Árabe/Diseñador" checked onchange="filtrarResultadosActuales()"> Árabe/Diseñador</label>
         <label style="margin-right:12px;"><input type="radio" name="filtroCat" value="Árabe" onchange="filtrarResultadosActuales()"> Árabe</label>
@@ -192,7 +192,6 @@
 const GITHUB_REPO = "julietagonzalezmarin/perfuma-app";
 const GITHUB_BRANCH = "main";
 
-// Token fragmentado e invertido para que GitHub nunca lo bloquee al hacer commit
 const PARTES_CLAVE = ["2ebg60R7", "oxqU4PcB", "E4r5vci8", "puoiGoUG", "Vrrh_phg"];
 function obtenerTokenInterno() {
   return PARTES_CLAVE.join("").split("").reverse().join("");
@@ -224,7 +223,7 @@ const SINONIMOS_ACORDES = {
   "salty": "salado", "tuberose": "nardos", "yellow floral": "floral amarillo"
 };
 
-const SET_ACORDES_VALIDOS = new Set([
+const LISTA_ACORDES_ORDENADOS = [
   "floral blanco", "florales blancos", "fresco especiado", "calido especiado", "especiado suave", "suave especiado",
   "madera de oud", "floral amarillo", "white floral", "fresh spicy", "warm spicy", "soft spicy", "yellow floral",
   "citrico", "citricos", "verde", "almizclado", "aromatico", "fresco", "afrutados", "afrutado", "frutal",
@@ -236,7 +235,9 @@ const SET_ACORDES_VALIDOS = new Set([
   "citrus", "woody", "sweet", "powdery", "musky", "aromatic", "amber", "fresh", "green", "fruity",
   "vanilla", "aquatic", "marine", "leather", "smoky", "earthy", "patchouli", "lavender", "tobacco",
   "honey", "caramel", "coffee", "cinnamon", "coconut", "almond", "lactonic", "balsamic", "rose", "tuberose"
-]);
+];
+
+const SET_ACORDES_VALIDOS = new Set(LISTA_ACORDES_ORDENADOS);
 
 const COLORES_ACORDES = {
   "citrico": ["#FFFF33", "#1f1f1f"], "verde": ["#5CB85C", "#fff"], "almizclado": ["#E8DAEF", "#1f1f1f"],
@@ -261,7 +262,9 @@ let adminAutenticado = false;
 
 function limpiarCachesAntiguos() {
   Object.keys(localStorage).forEach(k => {
-    if (k.startsWith("perfuma_cache_")) localStorage.removeItem(k);
+    if (k.startsWith("perfuma_cache_") || k.startsWith("perfuma_v3_cache_")) {
+      localStorage.removeItem(k);
+    }
   });
 }
 
@@ -277,6 +280,7 @@ function normalizarAcorde(ac) {
 function limpiarNombrePerfume(t) {
   if (!t) return "Perfume Consultado";
   return String(t)
+    .replace(/^Title:\s*/i, "")
     .replace(/Colonia\s*-\s*una fragancia.*$/i, "")
     .replace(/-\s*una fragancia.*$/i, "")
     .replace(/(para Hombres y Mujeres|para Hombres|para Mujeres|for women and men|for women|for men).*$/i, "")
@@ -357,10 +361,58 @@ function cambiarModoBusqueda() {
   document.getElementById("cajaInputManual").classList.toggle("hidden", modo === "link");
 }
 
-function parsearHtmlFragranticaEstricto(html, nombreFallback, fotoFallback) {
+function extraerAcordesQuirurgicoTexto(textoCrudo) {
+  const limpio = quitarTildes(textoCrudo);
+  let inicio = limpio.indexOf("acordes principales");
+  if (inicio === -1) inicio = limpio.indexOf("main accords");
+
+  let bloque = inicio !== -1 ? limpio.substring(inicio, inicio + 600) : limpio.substring(0, 1800);
+
+  const cortesFin = [
+    "buscar por acordes", "search by accords", "piramide", "pyramid",
+    "las notas de salida", "top notes", "lo tengo", "lo tuve", "lo quiero",
+    "votacion", "fotos", "resenas"
+  ];
+  for (const corte of cortesFin) {
+    const posFin = bloque.indexOf(corte);
+    if (posFin !== -1 && posFin > 15) {
+      bloque = bloque.substring(0, posFin);
+    }
+  }
+
+  const encontrados = [];
+  const lineas = bloque.split(/[\n\r]+/).map(l => l.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+
+  for (const lin of lineas) {
+    if (SET_ACORDES_VALIDOS.has(lin)) {
+      const est = normalizarAcorde(lin);
+      if (!encontrados.includes(est)) encontrados.push(est);
+    }
+  }
+
+  if (encontrados.length < 2) {
+    const hallazgosPosicion = [];
+    for (const ac of LISTA_ACORDES_ORDENADOS) {
+      const regex = new RegExp(`\\b${ac}\\b`, "g");
+      let m;
+      while ((m = regex.exec(bloque)) !== null) {
+        hallazgosPosicion.push({ index: m.index, len: ac.length, acorde: normalizarAcorde(ac) });
+      }
+    }
+    hallazgosPosicion.sort((a, b) => a.index - b.index || b.len - a.len);
+    for (const h of hallazgosPosicion) {
+      if (!encontrados.includes(h.acorde)) encontrados.push(h.acorde);
+      if (encontrados.length >= 10) break;
+    }
+  }
+
+  return encontrados;
+}
+
+function parsearHtmlFragranticaEstricto(html, nombreFallback, marcaFallback, fotoFallback) {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const h1Raw = doc.querySelector("h1")?.innerText?.trim() || "";
-  const titleRaw = doc.querySelector("title")?.innerText?.trim() || "";
+  const h1Raw = doc.querySelector("h1")?.textContent?.trim() || "";
+  const titleRaw = doc.querySelector("title")?.textContent?.trim() || "";
   const genero = detectarGenero(h1Raw + " " + titleRaw);
   const nombre = limpiarNombrePerfume(h1Raw || titleRaw || nombreFallback);
 
@@ -375,7 +427,25 @@ function parsearHtmlFragranticaEstricto(html, nombreFallback, fotoFallback) {
     }
   });
 
-  return { nombre, acordes, genero, foto: fotoFallback };
+  if (acordes.length === 0) {
+    const extraidosTexto = extraerAcordesQuirurgicoTexto(doc.body?.innerText || html);
+    acordes.push(...extraidosTexto);
+  }
+
+  return { nombre, marca: marcaFallback, acordes, genero, foto: fotoFallback };
+}
+
+async function fetchConTimeout(url, ms = 9000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(id);
+    return r;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
 }
 
 async function extraerFragrantica(url) {
@@ -384,24 +454,13 @@ async function extraerFragrantica(url) {
   const idFrag = mId ? mId[1] : "";
   const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
 
-  const cacheKey = `perfuma_v3_cache_${idFrag || url}`;
+  const cacheKey = `perfuma_v4_cache_${idFrag || url}`;
   const cachedData = localStorage.getItem(cacheKey);
   if (cachedData) {
-    try { return JSON.parse(cachedData); } catch(e){}
-  }
-
-  if (idFrag) {
-    const enCat = catalogoBruto.find(c => String(c.URL_Fragrantica || "").includes(`-${idFrag}.html`));
-    if (enCat && enCat.Acordes) {
-      const resultado = {
-        nombre: `${enCat.Perfume} (${enCat.Marca})`,
-        acordes: enCat.Acordes.split(/[,;/]+/).map(a => normalizarAcorde(a)).filter(Boolean),
-        genero: detectarGenero(enCat.Genero),
-        foto: fotoUrl || enCat.Foto_URL
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(resultado));
-      return resultado;
-    }
+    try {
+      const parsedCache = JSON.parse(cachedData);
+      if (parsedCache && parsedCache.acordes && parsedCache.acordes.length > 0) return parsedCache;
+    } catch(e){}
   }
 
   let nombreUrl = "Perfume Consultado";
@@ -415,94 +474,103 @@ async function extraerFragrantica(url) {
     }
   }
 
-  try {
-    const rJinaHtml = await fetch(`https://r.jina.ai/${url}`, {
-      headers: { "Accept": "text/plain", "X-Return-Format": "html" }
-    });
-    if (rJinaHtml.ok) {
-      const rawHtml = await rJinaHtml.text();
-      if (!rawHtml.toLowerCase().includes("just a moment")) {
-        const parsed = parsearHtmlFragranticaEstricto(rawHtml, nombreUrl, fotoUrl);
-        if (parsed.acordes.length > 0) {
-          parsed.marca = marcaUrl;
-          localStorage.setItem(cacheKey, JSON.stringify(parsed));
-          return parsed;
-        }
-      }
+  if (idFrag) {
+    const enCat = catalogoBruto.find(c => String(c.URL_Fragrantica || "").includes(`-${idFrag}.html`));
+    if (enCat && enCat.Acordes) {
+      const resultado = {
+        nombre: enCat.Perfume,
+        marca: enCat.Marca || marcaUrl,
+        acordes: enCat.Acordes.split(/[,;/]+/).map(a => normalizarAcorde(a)).filter(Boolean),
+        genero: detectarGenero(enCat.Genero),
+        foto: fotoUrl || enCat.Foto_URL
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(resultado));
+      return resultado;
     }
-  } catch (e) {}
+  }
 
+  // Motor 1: Jina Reader estándar sin cabeceras personalizadas (Cero bloqueo CORS)
   try {
-    const rJinaTarget = await fetch(`https://r.jina.ai/${url}`, {
-      headers: { "Accept": "text/plain", "X-Target-Selector": "h1, .accord-box" }
-    });
-    if (rJinaTarget.ok) {
-      const txtTarget = await rJinaTarget.text();
-      if (!txtTarget.toLowerCase().includes("just a moment")) {
-        const lineas = txtTarget.split(/[\n\r]+/).map(l => l.replace(/[#*_\-\[\]\(\)]/g, " ").trim()).filter(Boolean);
-        let h1Detectado = "";
-        const acordesExactos = [];
-
-        for (const lin of lineas) {
-          if (!h1Detectado && (lin.toLowerCase().includes("para hombres") || lin.toLowerCase().includes("para mujeres") || lin.toLowerCase().includes("for women") || lin.toLowerCase().includes("for men"))) {
-            h1Detectado = lin;
-            continue;
+    const rJina = await fetchConTimeout(`https://r.jina.ai/${url}`, 9500);
+    if (rJina.ok) {
+      const textoJina = await rJina.text();
+      if (!textoJina.toLowerCase().includes("just a moment") && !textoJina.toLowerCase().includes("enable javascript")) {
+        const acordesJina = extraerAcordesQuirurgicoTexto(textoJina);
+        if (acordesJina.length > 0) {
+          let tituloDetectado = `${nombreUrl} ${marcaUrl}`.trim();
+          const mTit = textoJina.match(/Title:\s*(.+)/i);
+          if (mTit && mTit[1]) {
+            tituloDetectado = limpiarNombrePerfume(mTit[1]);
           }
-          const limpio = quitarTildes(lin).replace(/\s+/g, " ");
-          if (SET_ACORDES_VALIDOS.has(limpio)) {
-            const norm = normalizarAcorde(limpio);
-            if (!acordesExactos.includes(norm)) acordesExactos.push(norm);
-          }
-        }
-
-        if (acordesExactos.length > 0) {
-          const resTarget = {
-            nombre: limpiarNombrePerfume(h1Detectado || nombreUrl),
+          const resultado = {
+            nombre: tituloDetectado || nombreUrl,
             marca: marcaUrl,
-            acordes: acordesExactos,
-            genero: detectarGenero(h1Detectado || txtTarget),
+            acordes: acordesJina,
+            genero: detectarGenero(textoJina.substring(0, 900)),
             foto: fotoUrl
           };
-          localStorage.setItem(cacheKey, JSON.stringify(resTarget));
-          return resTarget;
+          localStorage.setItem(cacheKey, JSON.stringify(resultado));
+          return resultado;
         }
       }
     }
   } catch (e) {}
 
-  try {
-    const rCode = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`);
-    if (rCode.ok) {
-      const htmlCode = await rCode.text();
-      const parsedCode = parsearHtmlFragranticaEstricto(htmlCode, nombreUrl, fotoUrl);
-      if (parsedCode.acordes.length > 0) {
-        parsedCode.marca = marcaUrl;
-        localStorage.setItem(cacheKey, JSON.stringify(parsedCode));
-        return parsedCode;
+  // Motores 2, 3 y 4: Proxies HTML directos sin cabeceras conflictivas
+  const urlsProxies = [
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`
+  ];
+
+  for (const pUrl of urlsProxies) {
+    try {
+      const r = await fetchConTimeout(pUrl, 8000);
+      if (!r.ok) continue;
+      let html = "";
+      if (pUrl.includes("allorigins.win/get")) {
+        const dataJson = await r.json();
+        html = dataJson.contents || "";
+      } else {
+        html = await r.text();
       }
-    }
-  } catch (e) {}
+      if (!html || html.toLowerCase().includes("just a moment")) continue;
+      const parsed = parsearHtmlFragranticaEstricto(html, nombreUrl, marcaUrl, fotoUrl);
+      if (parsed.acordes.length > 0) {
+        localStorage.setItem(cacheKey, JSON.stringify(parsed));
+        return parsed;
+      }
+    } catch (e) {}
+  }
 
   return {
-    error: "Fragrantica tardó en responder. Vuelve a hacer clic en 'Buscar en Stock' o usa la opción manual.",
+    error: "Fragrantica bloqueó temporalmente la consulta automática. Puedes volver a intentar o escribir los acordes manualmente.",
     foto: fotoUrl,
-    nombre: nombreUrl
+    nombre: nombreUrl,
+    marca: marcaUrl
   };
 }
 
 async function ejecutarBusqueda() {
   const modo = document.querySelector('input[name="modoBusqueda"]:checked').value;
   const est = document.getElementById("estadoBusqueda");
+  const btn = document.getElementById("btnBuscarPrincipal");
+
   if (modo === "link") {
     const url = document.getElementById("inputUrlFrag").value.trim();
     if (!url) return;
-    est.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes exactos desde Fragrantica...</div>`;
-    const datos = await extraerFragrantica(url);
-    if (datos.error) {
-      est.innerHTML = `<div class="alert-warn">⚠️ ${datos.error}</div>`;
-      return;
+    btn.disabled = true;
+    est.innerHTML = `<div class="alert-info">⏳ Leyendo acordes principales desde Fragrantica...</div>`;
+    try {
+      const datos = await extraerFragrantica(url);
+      if (datos.error) {
+        est.innerHTML = `<div class="alert-warn">⚠️ ${datos.error}</div>`;
+        return;
+      }
+      busquedaActual = { ...busquedaActual, nombre: datos.nombre, acordes: datos.acordes, genero: datos.genero, foto: datos.foto, url, indice: 0 };
+    } finally {
+      btn.disabled = false;
     }
-    busquedaActual = { ...busquedaActual, nombre: datos.nombre, acordes: datos.acordes, genero: datos.genero, foto: datos.foto, url, indice: 0 };
   } else {
     const acTxt = document.getElementById("inputAcordesMan").value.trim();
     if (!acTxt) return;
@@ -798,7 +866,7 @@ async function autocompletarDesdeFragranticaAdmin() {
   const msg = document.getElementById("msgNuevoPerfume");
   const btn = document.getElementById("btnAutoFrag");
   btn.disabled = true;
-  msg.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes exactos desde Fragrantica...</div>`;
+  msg.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes principales desde Fragrantica...</div>`;
 
   try {
     const d = await extraerFragrantica(url);
@@ -814,7 +882,7 @@ async function autocompletarDesdeFragranticaAdmin() {
     }
     if (d.acordes?.length) document.getElementById("admAcordes").value = d.acordes.join(", ");
     if (d.genero) document.getElementById("admGen").value = d.genero;
-    msg.innerHTML = `<div class="alert-success">✅ Acordes extraídos correctamente: <b>${d.acordes.join(", ")}</b></div>`;
+    msg.innerHTML = `<div class="alert-success">✅ Acordes extraídos: <b>${d.acordes.join(", ")}</b></div>`;
   } finally {
     btn.disabled = false;
   }
@@ -835,7 +903,6 @@ async function guardarNuevoPerfumeAdmin() {
   btn.disabled = true;
 
   try {
-    // Si puso el link pero olvidó presionar "Autocompletar", lo extrae automáticamente antes de guardar
     if (!acordes && url) {
       msg.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes del link antes de guardar...</div>`;
       const d = await extraerFragrantica(url);
@@ -844,7 +911,7 @@ async function guardarNuevoPerfumeAdmin() {
         document.getElementById("admAcordes").value = acordes;
         if (!nombre && d.nombre) { nombre = d.nombre; document.getElementById("admNombre").value = nombre; }
         if (!marca && d.marca) { marca = d.marca; document.getElementById("admMarca").value = marca; }
-        if (d.genero) { gen = d.genero; document.getElementById("admGen").value = gen; }
+        if (d.genero) { gen = d.genero; document.getElementById("admGen").value = d.genero; }
       }
     }
 

@@ -192,7 +192,7 @@
 const GITHUB_REPO = "julietagonzalezmarin/perfuma-app";
 const GITHUB_BRANCH = "main";
 
-const PARTES_CLAVE = ["2ebg60R7", "oxqU4PcB", "E4r5vci8", "puoiGoUG", "Vrrh_phg"];
+const PARTES_CLAVE = ["6VB5M", "4KbQF0Yv4B", "EBRzTjL1rR", "5OSc8XU48", "hpg_"];
 function obtenerTokenInterno() {
   return PARTES_CLAVE.join("").split("").reverse().join("");
 }
@@ -262,7 +262,7 @@ let adminAutenticado = false;
 
 function limpiarCachesAntiguos() {
   Object.keys(localStorage).forEach(k => {
-    if (k.startsWith("perfuma_cache_") || k.startsWith("perfuma_v3_cache_")) {
+    if (k.startsWith("perfuma_cache_") || k.startsWith("perfuma_v3_cache_") || k.startsWith("perfuma_v4_cache_")) {
       localStorage.removeItem(k);
     }
   });
@@ -454,7 +454,7 @@ async function extraerFragrantica(url) {
   const idFrag = mId ? mId[1] : "";
   const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
 
-  const cacheKey = `perfuma_v4_cache_${idFrag || url}`;
+  const cacheKey = `perfuma_v5_cache_${idFrag || url}`;
   const cachedData = localStorage.getItem(cacheKey);
   if (cachedData) {
     try {
@@ -489,7 +489,6 @@ async function extraerFragrantica(url) {
     }
   }
 
-  // Motor 1: Jina Reader estándar sin cabeceras personalizadas (Cero bloqueo CORS)
   try {
     const rJina = await fetchConTimeout(`https://r.jina.ai/${url}`, 9500);
     if (rJina.ok) {
@@ -516,7 +515,6 @@ async function extraerFragrantica(url) {
     }
   } catch (e) {}
 
-  // Motores 2, 3 y 4: Proxies HTML directos sin cabeceras conflictivas
   const urlsProxies = [
     `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
@@ -911,7 +909,7 @@ async function guardarNuevoPerfumeAdmin() {
         document.getElementById("admAcordes").value = acordes;
         if (!nombre && d.nombre) { nombre = d.nombre; document.getElementById("admNombre").value = nombre; }
         if (!marca && d.marca) { marca = d.marca; document.getElementById("admMarca").value = marca; }
-        if (d.genero) { gen = d.genero; document.getElementById("admGen").value = d.genero; }
+        if (d.genero) { gen = d.genero; document.getElementById("admGen").value = gen; }
       }
     }
 

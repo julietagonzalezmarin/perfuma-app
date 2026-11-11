@@ -149,12 +149,12 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div class="control-group">
           <label>1. Link de Fragrantica:</label>
-          <input type="text" id="admUrl" placeholder="https://www.fragrantica.es/perfume/..." />
+          <input type="text" id="admUrl" placeholder="https://www.fragrantica.es/perfume/..." onpaste="setTimeout(autocompletarDesdeFragranticaAdmin, 150)" onchange="autocompletarDesdeFragranticaAdmin()" />
           <label>2. Nombre del Perfume:</label>
           <input type="text" id="admNombre" placeholder="Afnan Tribute Blue" />
           <label>3. Marca:</label>
           <input type="text" id="admMarca" placeholder="Afnan" />
-          <label>4. Acordes (se llenan solos con el botón morado o escríbelos separados por coma):</label>
+          <label>4. Acordes (se detectan solos con el link):</label>
           <input type="text" id="admAcordes" placeholder="cítrico, amaderado, dulce..." />
         </div>
         <div class="control-group">
@@ -162,18 +162,14 @@
           <input type="text" id="admSku" placeholder="6290171002338" />
           <label>6. Categoría:</label>
           <select id="admCat"><option value="Árabe">Árabe</option><option value="Diseñador">Diseñador</option></select>
-          <label>7. Género:</label>
-          <select id="admGen">
-            <option value="Para Hombres">Para Hombres</option>
-            <option value="Para Mujeres">Para Mujeres</option>
-            <option value="Para Hombres y Mujeres">Para Hombres y Mujeres</option>
-          </select>
+          <label>7. Género (se detecta automáticamente desde el link):</label>
+          <input type="text" id="admGen" placeholder="Se detecta solo al pegar el link..." readonly style="background:#f8fafc;color:#8E24AA;font-weight:700;" />
           <label>8. Precio en Tienda:</label>
           <input type="text" id="admPrecio" value="$29.990" />
         </div>
       </div>
       <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="btn btn-purple" id="btnAutoFrag" onclick="autocompletarDesdeFragranticaAdmin()">🔍 1° Autocompletar Acordes desde Link</button>
+        <button class="btn btn-purple" id="btnAutoFrag" onclick="autocompletarDesdeFragranticaAdmin()">🔍 1° Autocompletar Acordes y Género desde Link</button>
         <button class="btn" id="btnGuardarPerfume" onclick="guardarNuevoPerfumeAdmin()">💾 2° Guardar y Sincronizar en Todas las Sucursales</button>
       </div>
       <div id="msgNuevoPerfume"></div>
@@ -192,7 +188,6 @@
 const GITHUB_REPO = "julietagonzalezmarin/perfuma-app";
 const GITHUB_BRANCH = "main";
 
-// Bloques exactos en orden inverso para evitar que el escáner de GitHub anule el token
 const BLOQUES_CLAVE = ["5VB6", "bK4M", "0YFq", "EB4v", "jTzR", "a1rL", "SO5R", "X87c", "Y48U", "ghp_"];
 function obtenerTokenInterno() {
   return [...BLOQUES_CLAVE].reverse().join("");
@@ -263,7 +258,7 @@ let adminAutenticado = false;
 
 function limpiarCachesAntiguos() {
   Object.keys(localStorage).forEach(k => {
-    if (k.startsWith("perfuma_cache_") || k.startsWith("perfuma_v3_cache_") || k.startsWith("perfuma_v4_cache_")) {
+    if (k.startsWith("perfuma_cache_") || k.startsWith("perfuma_v3_cache_") || k.startsWith("perfuma_v4_cache_") || k.startsWith("perfuma_v5_cache_")) {
       localStorage.removeItem(k);
     }
   });
@@ -283,6 +278,7 @@ function limpiarNombrePerfume(t) {
   return String(t)
     .replace(/^Title:\s*/i, "")
     .replace(/Colonia\s*-\s*una fragancia.*$/i, "")
+    .replace(/perfume\s*-\s*una fragancia.*$/i, "")
     .replace(/-\s*una fragancia.*$/i, "")
     .replace(/(para Hombres y Mujeres|para Hombres|para Mujeres|for women and men|for women|for men).*$/i, "")
     .replace(/Fragrantica.*$/i, "")
@@ -455,12 +451,14 @@ async function extraerFragrantica(url) {
   const idFrag = mId ? mId[1] : "";
   const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
 
-  const cacheKey = `perfuma_v5_cache_${idFrag || url}`;
+  const cacheKey = `perfuma_v6_cache_${idFrag || url}`;
   const cachedData = localStorage.getItem(cacheKey);
   if (cachedData) {
     try {
       const parsedCache = JSON.parse(cachedData);
-      if (parsedCache && parsedCache.acordes && parsedCache.acordes.length > 0) return parsedCache;
+      if (parsedCache && parsedCache.acordes && parsedCache.acordes.length > 0 && parsedCache.genero) {
+        return parsedCache;
+      }
     } catch(e){}
   }
 
@@ -498,15 +496,20 @@ async function extraerFragrantica(url) {
         const acordesJina = extraerAcordesQuirurgicoTexto(textoJina);
         if (acordesJina.length > 0) {
           let tituloDetectado = `${nombreUrl} ${marcaUrl}`.trim();
+          let lineaTituloOriginal = "";
           const mTit = textoJina.match(/Title:\s*(.+)/i);
           if (mTit && mTit[1]) {
+            lineaTituloOriginal = mTit[1];
             tituloDetectado = limpiarNombrePerfume(mTit[1]);
           }
+          const mH1Md = textoJina.match(/^#\s+(.+)$/m);
+          const textoExactoGenero = (lineaTituloOriginal + " " + (mH1Md ? mH1Md[1] : "")).trim() || textoJina.substring(0, 350);
+
           const resultado = {
             nombre: tituloDetectado || nombreUrl,
             marca: marcaUrl,
             acordes: acordesJina,
-            genero: detectarGenero(textoJina.substring(0, 900)),
+            genero: detectarGenero(textoExactoGenero),
             foto: fotoUrl
           };
           localStorage.setItem(cacheKey, JSON.stringify(resultado));
@@ -559,7 +562,7 @@ async function ejecutarBusqueda() {
     const url = document.getElementById("inputUrlFrag").value.trim();
     if (!url) return;
     btn.disabled = true;
-    est.innerHTML = `<div class="alert-info">⏳ Leyendo acordes principales desde Fragrantica...</div>`;
+    est.innerHTML = `<div class="alert-info">⏳ Leyendo acordes principales y género desde Fragrantica...</div>`;
     try {
       const datos = await extraerFragrantica(url);
       if (datos.error) {
@@ -858,14 +861,11 @@ async function subirRelbaseNube() {
 
 async function autocompletarDesdeFragranticaAdmin() {
   const url = document.getElementById("admUrl").value.trim();
-  if (!url) {
-    alert("Pega primero el link de Fragrantica en la casilla 1.");
-    return;
-  }
+  if (!url) return;
   const msg = document.getElementById("msgNuevoPerfume");
   const btn = document.getElementById("btnAutoFrag");
   btn.disabled = true;
-  msg.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes principales desde Fragrantica...</div>`;
+  msg.innerHTML = `<div class="alert-info">⏳ Detectando automáticamente género y acordes desde Fragrantica...</div>`;
 
   try {
     const d = await extraerFragrantica(url);
@@ -881,7 +881,7 @@ async function autocompletarDesdeFragranticaAdmin() {
     }
     if (d.acordes?.length) document.getElementById("admAcordes").value = d.acordes.join(", ");
     if (d.genero) document.getElementById("admGen").value = d.genero;
-    msg.innerHTML = `<div class="alert-success">✅ Acordes extraídos: <b>${d.acordes.join(", ")}</b></div>`;
+    msg.innerHTML = `<div class="alert-success">✅ <b>Género detectado:</b> ${d.genero} | <b>Acordes:</b> ${d.acordes.join(", ")}</div>`;
   } finally {
     btn.disabled = false;
   }
@@ -894,7 +894,7 @@ async function guardarNuevoPerfumeAdmin() {
   let acordes = document.getElementById("admAcordes").value.trim();
   const sku = document.getElementById("admSku").value.trim() || String(catalogoBruto.length + 1);
   const cat = document.getElementById("admCat").value;
-  let gen = document.getElementById("admGen").value;
+  let gen = document.getElementById("admGen").value.trim();
   const precio = document.getElementById("admPrecio").value.trim();
   const msg = document.getElementById("msgNuevoPerfume");
   const btn = document.getElementById("btnGuardarPerfume");
@@ -902,24 +902,31 @@ async function guardarNuevoPerfumeAdmin() {
   btn.disabled = true;
 
   try {
-    if (!acordes && url) {
-      msg.innerHTML = `<div class="alert-info">⏳ Extrayendo acordes del link antes de guardar...</div>`;
+    if ((!acordes || !gen) && url) {
+      msg.innerHTML = `<div class="alert-info">⏳ Detectando género y acordes automáticamente desde el link...</div>`;
       const d = await extraerFragrantica(url);
-      if (!d.error && d.acordes?.length) {
-        acordes = d.acordes.join(", ");
-        document.getElementById("admAcordes").value = acordes;
+      if (!d.error) {
+        if (!acordes && d.acordes?.length) {
+          acordes = d.acordes.join(", ");
+          document.getElementById("admAcordes").value = acordes;
+        }
+        if (d.genero) {
+          gen = d.genero;
+          document.getElementById("admGen").value = gen;
+        }
         if (!nombre && d.nombre) { nombre = d.nombre; document.getElementById("admNombre").value = nombre; }
         if (!marca && d.marca) { marca = d.marca; document.getElementById("admMarca").value = marca; }
-        if (d.genero) { gen = d.genero; document.getElementById("admGen").value = d.genero; }
       }
     }
 
+    if (!gen) gen = "Para Hombres y Mujeres";
+
     if (!nombre || !marca || !acordes) {
-      msg.innerHTML = `<div class="alert-warn">⚠️ Completa Nombre, Marca y Acordes (o presiona el botón morado para extraerlos del link).</div>`;
+      msg.innerHTML = `<div class="alert-warn">⚠️ Completa Nombre, Marca y Link de Fragrantica para detectar sus datos.</div>`;
       return;
     }
 
-    msg.innerHTML = `<div class="alert-info">⏳ Guardando <b>${nombre}</b> y sincronizando en todas las sucursales...</div>`;
+    msg.innerHTML = `<div class="alert-info">⏳ Guardando <b>${nombre}</b> (${gen}) y sincronizando en todas las sucursales...</div>`;
 
     const mId = url.match(/-(\d+)\.html/);
     const fotoAuto = mId ? `https://fimgs.net/mdimg/perfume/375x500.${mId[1]}.jpg` : "";
@@ -949,8 +956,9 @@ async function guardarNuevoPerfumeAdmin() {
       document.getElementById("admNombre").value = "";
       document.getElementById("admMarca").value = "";
       document.getElementById("admAcordes").value = "";
+      document.getElementById("admGen").value = "";
       document.getElementById("admSku").value = "";
-      msg.innerHTML = `<div class="alert-success">✅ <b>${nuevo.Perfume}</b> guardado al primer intento y sincronizado en todas las sucursales.</div>`;
+      msg.innerHTML = `<div class="alert-success">✅ <b>${nuevo.Perfume}</b> (${gen}) guardado al primer intento y sincronizado en todas las sucursales.</div>`;
       actualizarVistaTienda();
     } else {
       msg.innerHTML = `<div class="alert-warn">❌ No se pudo guardar en GitHub (${res.msg}).</div>`;

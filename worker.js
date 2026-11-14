@@ -167,17 +167,31 @@ async function rutaFragrantica(request, env) {
     if (guardado) return responder({ texto: guardado, deCache: true });
   }
 
-  let texto = "";
-  try {
-    const r = await fetch("https://r.jina.ai/" + url, {
-      headers: { accept: "text/plain", "user-agent": "perfuma-app" },
-      signal: AbortSignal.timeout(22000)
-    });
-    if (r.ok) texto = await r.text();
-  } catch (e) {}
+  // Se llama sin cabeceras propias: añadirlas hace que el lector responda distinto.
+  // El tiempo se controla con un temporizador manual, que funciona en cualquier runtime.
+  const conLimite = (promesa, ms) => Promise.race([
+    promesa,
+    new Promise((_, rechazar) => setTimeout(() => rechazar(new Error("tiempo agotado")), ms))
+  ]);
 
-  if (!texto || !/acordes principales|main accords/i.test(texto)) {
-    return responder({ error: "Fragrantica no respondió a tiempo. Inténtalo de nuevo en unos segundos, o escribe los acordes a mano." }, 502);
+  let texto = "";
+  let detalle = "";
+  for (const intento of [`https://r.jina.ai/${url}`, `https://r.jina.ai/${encodeURI(url)}`]) {
+    try {
+      const r = await conLimite(fetch(intento), 20000);
+      detalle = String(r.status);
+      if (r.ok) {
+        const t = await conLimite(r.text(), 10000);
+        if (/acordes principales|main accords/i.test(t)) { texto = t; break; }
+        detalle = r.status + "-sin-acordes";
+      }
+    } catch (e) {
+      detalle = (e && e.message === "tiempo agotado") ? "lento" : "sin-red";
+    }
+  }
+
+  if (!texto) {
+    return responder({ error: `Fragrantica no respondió esta vez. Inténtalo de nuevo en unos segundos, o escribe los acordes a mano. (detalle: ${detalle})` }, 502);
   }
 
   texto = texto.slice(0, 120000);

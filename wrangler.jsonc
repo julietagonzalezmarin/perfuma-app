@@ -1,0 +1,17 @@
+{
+  // Configuración del sitio Perfuma en Cloudflare Workers.
+  // El nombre debe coincidir con el nombre del Worker en el panel de Cloudflare.
+  "name": "perfuma-app",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-14",
+
+  // El comando de build (ver package.json) copia a public/ sólo los archivos
+  // que deben quedar públicos en internet. Lo que no esté ahí no se publica:
+  // ni app.py, ni los Excel con costos, ni este archivo.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  "observability": { "enabled": true }
+}

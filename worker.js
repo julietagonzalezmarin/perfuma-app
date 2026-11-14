@@ -155,6 +155,7 @@ const claveSku = s => String(s ?? "").trim().replace(/\.0$/, "").replace(/^0+/, 
 // queda compartida por las tres tiendas.
 const RE_FRAGRANTICA = /^https:\/\/(?:www\.)?fragrantica\.(?:es|com)\/perfume\/[^\/?#]+\/[^\/?#]*-(\d+)\.html$/i;
 const DIAS_CACHE = 180;
+const MAX_TEXTO = 120000;
 
 async function rutaFragrantica(request, env) {
   const url = (new URL(request.url).searchParams.get("url") || "").trim();
@@ -167,38 +168,49 @@ async function rutaFragrantica(request, env) {
     if (guardado) return responder({ texto: guardado, deCache: true });
   }
 
-  // Se llama sin cabeceras propias: añadirlas hace que el lector responda distinto.
-  // El tiempo se controla con un temporizador manual, que funciona en cualquier runtime.
+  // Se intenta leer desde aquí. El lector suele responder 429 a los servidores,
+  // así que si falla se le pide al navegador que lo lea él, que sí lo consigue.
   const conLimite = (promesa, ms) => Promise.race([
     promesa,
     new Promise((_, rechazar) => setTimeout(() => rechazar(new Error("tiempo agotado")), ms))
   ]);
 
-  let texto = "";
   let detalle = "";
-  for (const intento of [`https://r.jina.ai/${url}`, `https://r.jina.ai/${encodeURI(url)}`]) {
-    try {
-      const r = await conLimite(fetch(intento), 20000);
-      detalle = String(r.status);
-      if (r.ok) {
-        const t = await conLimite(r.text(), 10000);
-        if (/acordes principales|main accords/i.test(t)) { texto = t; break; }
-        detalle = r.status + "-sin-acordes";
+  try {
+    const r = await conLimite(fetch(`https://r.jina.ai/${url}`), 12000);
+    detalle = String(r.status);
+    if (r.ok) {
+      const t = await conLimite(r.text(), 8000);
+      if (/acordes principales|main accords/i.test(t)) {
+        const texto = t.slice(0, MAX_TEXTO);
+        if (env.CACHE_FRAG) {
+          try { await env.CACHE_FRAG.put(llave, texto, { expirationTtl: 60 * 60 * 24 * DIAS_CACHE }); } catch (e) {}
+        }
+        return responder({ texto });
       }
-    } catch (e) {
-      detalle = (e && e.message === "tiempo agotado") ? "lento" : "sin-red";
+      detalle = r.status + "-sin-acordes";
     }
+  } catch (e) {
+    detalle = (e && e.message === "tiempo agotado") ? "lento" : "sin-red";
   }
 
-  if (!texto) {
-    return responder({ error: `Fragrantica no respondió esta vez. Inténtalo de nuevo en unos segundos, o escribe los acordes a mano. (detalle: ${detalle})` }, 502);
-  }
+  return responder({ necesitaNavegador: true, detalle });
+}
 
-  texto = texto.slice(0, 120000);
-  if (env.CACHE_FRAG) {
-    try { await env.CACHE_FRAG.put(llave, texto, { expirationTtl: 60 * 60 * 24 * DIAS_CACHE }); } catch (e) {}
+// El navegador manda lo que leyó, para que las otras tiendas lo tengan al instante.
+async function rutaGuardarFragrantica(request, env) {
+  const { url, texto } = await request.json().catch(() => ({}));
+  const m = String(url || "").match(RE_FRAGRANTICA);
+  if (!m) return responder({ error: "Link no válido." }, 400);
+  if (typeof texto !== "string" || texto.length > MAX_TEXTO || !/acordes principales|main accords/i.test(texto)) {
+    return responder({ error: "Contenido no válido." }, 400);
   }
-  return responder({ texto });
+  if (!env.CACHE_FRAG) return responder({ ok: false });
+  const llave = "frag_" + m[1];
+  // No se sobrescribe lo ya guardado: el primero que lo lee manda.
+  if (await env.CACHE_FRAG.get(llave)) return responder({ ok: true, yaEstaba: true });
+  try { await env.CACHE_FRAG.put(llave, texto, { expirationTtl: 60 * 60 * 24 * DIAS_CACHE }); } catch (e) {}
+  return responder({ ok: true });
 }
 
 // ---------- Rutas ----------
@@ -286,9 +298,23 @@ async function rutaStock(request, env) {
 
 export async function manejar(request, env) {
   const ruta = new URL(request.url).pathname.replace(/\/+$/, "").split("/api/")[1] || "";
+  // Diagnóstico temporal: dice QUÉ variables ve el servidor, nunca sus valores.
+  // Se puede borrar una vez que todo funcione.
+  if (ruta === "estado" && request.method === "GET") {
+    return responder({
+      variablesVisibles: Object.keys(env || {}).sort(),
+      tieneToken: !!env.GITHUB_TOKEN,
+      tieneRepo: !!env.GITHUB_REPO,
+      tieneClave: !!env.ADMIN_PASSWORD,
+      tieneCacheFragrantica: !!env.CACHE_FRAG,
+      tieneArchivos: !!env.ASSETS
+    });
+  }
+
   try {
     // La búsqueda es pública y no depende de la configuración de administración.
     if (ruta === "fragrantica" && request.method === "GET") return await rutaFragrantica(request, env);
+    if (ruta === "fragrantica" && request.method === "POST") return await rutaGuardarFragrantica(request, env);
   } catch (e) {
     return responder({ error: "No se pudo leer Fragrantica en este momento." }, 502);
   }

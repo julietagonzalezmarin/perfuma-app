@@ -1250,15 +1250,41 @@ async function extraerFragrantica(url) {
     }
   }
 
-  let d = {}, ok = false;
+  let d = {};
   try {
     const resp = await fetch(`./api/fragrantica?url=${encodeURIComponent(url)}`, { cache: "no-store" });
-    ok = resp.ok;
     d = await resp.json().catch(() => ({}));
+    if (!resp.ok && !d.necesitaNavegador) return sinDatos({ error: d.error || "No se pudo leer esa página de Fragrantica." });
   } catch (e) {
     return sinDatos({ error: "No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo." });
   }
-  if (!ok || !d.texto) return sinDatos({ error: d.error || "No se pudo leer esa página de Fragrantica." });
+
+  // El lector rechaza a los servidores pero no a los navegadores, así que
+  // cuando el servidor no puede, lo lee este equipo y se lo manda de vuelta
+  // para que las otras tiendas lo tengan al instante.
+  if (!d.texto && d.necesitaNavegador) {
+    try {
+      const ctrl = new AbortController();
+      const reloj = setTimeout(() => ctrl.abort(), 20000);
+      const rl = await fetch(`https://r.jina.ai/${url}`, { signal: ctrl.signal });
+      clearTimeout(reloj);
+      if (rl.ok) {
+        const t = await rl.text();
+        if (/acordes principales|main accords/i.test(t)) {
+          d.texto = t;
+          fetch("./api/fragrantica", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ url, texto: t.slice(0, 120000) })
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (!d.texto) {
+    return sinDatos({ error: `Fragrantica no respondió esta vez. Espera unos segundos y vuelve a intentarlo, o usa “Escribir acordes”.${d.detalle ? ` (detalle: ${d.detalle})` : ""}` });
+  }
 
   const acordes = extraerAcordesQuirurgicoTexto(d.texto);
   if (!acordes.length) return sinDatos({ error: "Esa página de Fragrantica no muestra acordes principales." });

@@ -13,5 +13,11 @@
     "binding": "ASSETS"
   },
 
+  // Almacén de caché para las lecturas de Fragrantica: la segunda vez que
+  // alguien busca el mismo perfume, en cualquier tienda, sale al instante.
+  "kv_namespaces": [
+    { "binding": "CACHE_FRAG", "id": "422f1f577fcf499ca08ca7953ca204e7" }
+  ],
+
   "observability": { "enabled": true }
 }

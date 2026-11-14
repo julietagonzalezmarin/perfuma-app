@@ -149,6 +149,44 @@ function csvLeer(texto) {
 
 const claveSku = s => String(s ?? "").trim().replace(/\.0$/, "").replace(/^0+/, "");
 
+// ---------- Fragrantica ----------
+// Fragrantica bloquea la lectura directa, así que se lee a través de r.jina.ai.
+// Hacerlo aquí y no en el navegador evita el bloqueo entre sitios, y la caché
+// queda compartida por las tres tiendas.
+const RE_FRAGRANTICA = /^https:\/\/(?:www\.)?fragrantica\.(?:es|com)\/perfume\/[^\/?#]+\/[^\/?#]*-(\d+)\.html$/i;
+const DIAS_CACHE = 180;
+
+async function rutaFragrantica(request, env) {
+  const url = (new URL(request.url).searchParams.get("url") || "").trim();
+  const m = url.match(RE_FRAGRANTICA);
+  if (!m) return responder({ error: "Ese link no es la página de un perfume en Fragrantica." }, 400);
+  const llave = "frag_" + m[1];
+
+  if (env.CACHE_FRAG) {
+    const guardado = await env.CACHE_FRAG.get(llave);
+    if (guardado) return responder({ texto: guardado, deCache: true });
+  }
+
+  let texto = "";
+  try {
+    const r = await fetch("https://r.jina.ai/" + url, {
+      headers: { accept: "text/plain", "user-agent": "perfuma-app" },
+      signal: AbortSignal.timeout(22000)
+    });
+    if (r.ok) texto = await r.text();
+  } catch (e) {}
+
+  if (!texto || !/acordes principales|main accords/i.test(texto)) {
+    return responder({ error: "Fragrantica no respondió a tiempo. Inténtalo de nuevo en unos segundos, o escribe los acordes a mano." }, 502);
+  }
+
+  texto = texto.slice(0, 120000);
+  if (env.CACHE_FRAG) {
+    try { await env.CACHE_FRAG.put(llave, texto, { expirationTtl: 60 * 60 * 24 * DIAS_CACHE }); } catch (e) {}
+  }
+  return responder({ texto });
+}
+
 // ---------- Rutas ----------
 async function rutaLogin(request, env) {
   const { password } = await request.json().catch(() => ({}));
@@ -234,6 +272,12 @@ async function rutaStock(request, env) {
 
 export async function manejar(request, env) {
   const ruta = new URL(request.url).pathname.replace(/\/+$/, "").split("/api/")[1] || "";
+  try {
+    // La búsqueda es pública y no depende de la configuración de administración.
+    if (ruta === "fragrantica" && request.method === "GET") return await rutaFragrantica(request, env);
+  } catch (e) {
+    return responder({ error: "No se pudo leer Fragrantica en este momento." }, 502);
+  }
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO || !env.ADMIN_PASSWORD) {
     return responder({ error: "Falta configurar GITHUB_TOKEN, GITHUB_REPO y ADMIN_PASSWORD en Cloudflare (Settings → Variables and Secrets)." }, 503);
   }

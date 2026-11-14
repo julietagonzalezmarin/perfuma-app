@@ -800,114 +800,6 @@ async function fetchConTimeout(url, ms = 9000) {
   }
 }
 
-async function extraerFragrantica(url) {
-  url = url.trim();
-  const mId = url.match(/-(\d+)\.html/);
-  const idFrag = mId ? mId[1] : "";
-  const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
-
-  const cacheKey = `perfuma_v6_cache_${idFrag || url}`;
-  const cachedData = localStorage.getItem(cacheKey);
-  if (cachedData) {
-    try {
-      const parsedCache = JSON.parse(cachedData);
-      if (parsedCache && parsedCache.acordes && parsedCache.acordes.length > 0 && parsedCache.genero) {
-        return parsedCache;
-      }
-    } catch(e){}
-  }
-
-  let nombreUrl = "Perfume Consultado";
-  let marcaUrl = "";
-  const partes = url.split("/perfume/");
-  if (partes[1]) {
-    const seg = partes[1].split("/");
-    if (seg.length >= 2) {
-      marcaUrl = seg[0].replace(/-/g, " ");
-      nombreUrl = seg[1].replace(/-\d+\.html.*$/, "").replace(/-/g, " ");
-    }
-  }
-
-  if (idFrag) {
-    const enCat = catalogoBruto.find(c => String(c.URL_Fragrantica || "").includes(`-${idFrag}.html`));
-    if (enCat && enCat.Acordes) {
-      const resultado = {
-        nombre: enCat.Perfume,
-        marca: enCat.Marca || marcaUrl,
-        acordes: enCat.Acordes.split(/[,;/]+/).map(a => normalizarAcorde(a)).filter(Boolean),
-        genero: detectarGenero(enCat.Genero),
-        foto: fotoUrl || enCat.Foto_URL
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(resultado));
-      return resultado;
-    }
-  }
-
-  try {
-    const rJina = await fetchConTimeout(`https://r.jina.ai/${url}`, 9500);
-    if (rJina.ok) {
-      const textoJina = await rJina.text();
-      if (!textoJina.toLowerCase().includes("just a moment") && !textoJina.toLowerCase().includes("enable javascript")) {
-        const acordesJina = extraerAcordesQuirurgicoTexto(textoJina);
-        if (acordesJina.length > 0) {
-          let tituloDetectado = `${nombreUrl} ${marcaUrl}`.trim();
-          let lineaTituloOriginal = "";
-          const mTit = textoJina.match(/Title:\s*(.+)/i);
-          if (mTit && mTit[1]) {
-            lineaTituloOriginal = mTit[1];
-            tituloDetectado = limpiarNombrePerfume(mTit[1]);
-          }
-          const mH1Md = textoJina.match(/^#\s+(.+)$/m);
-          const textoExactoGenero = (lineaTituloOriginal + " " + (mH1Md ? mH1Md[1] : "")).trim() || textoJina.substring(0, 350);
-
-          const resultado = {
-            nombre: tituloDetectado || nombreUrl,
-            marca: marcaUrl,
-            acordes: acordesJina,
-            genero: detectarGenero(textoExactoGenero),
-            foto: fotoUrl
-          };
-          localStorage.setItem(cacheKey, JSON.stringify(resultado));
-          return resultado;
-        }
-      }
-    }
-  } catch (e) {}
-
-  const urlsProxies = [
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`
-  ];
-
-  for (const pUrl of urlsProxies) {
-    try {
-      const r = await fetchConTimeout(pUrl, 8000);
-      if (!r.ok) continue;
-      let html = "";
-      if (pUrl.includes("allorigins.win/get")) {
-        const dataJson = await r.json();
-        html = dataJson.contents || "";
-      } else {
-        html = await r.text();
-      }
-      if (!html || html.toLowerCase().includes("just a moment")) continue;
-      const parsed = parsearHtmlFragranticaEstricto(html, nombreUrl, marcaUrl, fotoUrl);
-      if (parsed.acordes.length > 0) {
-        localStorage.setItem(cacheKey, JSON.stringify(parsed));
-        return parsed;
-      }
-    } catch (e) {}
-  }
-
-  return {
-    error: "Fragrantica bloqueó temporalmente la consulta automática. Puedes volver a intentar o escribir los acordes manualmente.",
-    foto: fotoUrl,
-    nombre: nombreUrl,
-    marca: marcaUrl
-  };
-}
-
 function calcularSimilitud(acBuscados, acPerfumeStr) {
   const lCli = [...new Set(acBuscados.map(normalizarAcorde).filter(Boolean))];
   const lTienda = [...new Set(String(acPerfumeStr || "").split(/[,;/]+/).map(normalizarAcorde).filter(Boolean))];
@@ -932,34 +824,6 @@ function esPerfumeValidoRelbase(nombre) {
   const n = String(nombre || "").toUpperCase();
   const excl = ['BOLSO', 'DESODORANTE', 'MIST', 'BODY', 'TESTER', 'SET', 'BOLSA', 'ENVASADOR', 'AIR FRESHENER', 'AMBIENTAL', 'CREMA', 'AFTER SHAVE', 'SHOWER', 'LOCION'];
   return !excl.some(e => n.includes(e));
-}
-
-async function autocompletarDesdeFragranticaAdmin() {
-  const url = document.getElementById("admUrl").value.trim();
-  if (!url) return;
-  const msg = document.getElementById("msgNuevoPerfume");
-  const btn = document.getElementById("btnAutoFrag");
-  btn.disabled = true;
-  msg.innerHTML = `<div class="alert-info">⏳ Detectando automáticamente género y acordes desde Fragrantica...</div>`;
-
-  try {
-    const d = await extraerFragrantica(url);
-    if (d.error) {
-      msg.innerHTML = `<div class="alert-warn">⚠️ ${d.error}</div>`;
-      return;
-    }
-    if (d.nombre && !document.getElementById("admNombre").value.trim()) {
-      document.getElementById("admNombre").value = d.nombre;
-    }
-    if (d.marca && !document.getElementById("admMarca").value.trim()) {
-      document.getElementById("admMarca").value = d.marca;
-    }
-    if (d.acordes?.length) document.getElementById("admAcordes").value = d.acordes.join(", ");
-    if (d.genero) document.getElementById("admGen").value = d.genero;
-    msg.innerHTML = `<div class="alert-success">✅ <b>Género detectado:</b> ${d.genero} | <b>Acordes:</b> ${d.acordes.join(", ")}</div>`;
-  } finally {
-    btn.disabled = false;
-  }
 }
 
 function descargarFaltantesExcel() {
@@ -1329,6 +1193,91 @@ function cambiarTab(cual) {
 }
 
 
+// Fragrantica escribe una frase con la pirámide olfativa. De ahí salen las notas.
+function extraerNotasDeTexto(texto) {
+  // Se busca la frase ("Notas de Salida son ..."), no el título de la sección.
+  const m = String(texto || "").match(/Notas? de (?:Salida|Corazón|Fondo)\s+(?:son|es)\s+[^\n]{3,600}/i);
+  if (!m) return "";
+  return m[0]
+    .replace(/(?:la|las|el|los)?\s*Notas? de (?:Salida|Corazón|Fondo)\s+(?:son|es)\s+/gi, ", ")
+    .replace(/\s+y\s+/gi, ", ")
+    .replace(/[;.]/g, ",")
+    .split(",")
+    .map(s => s.trim())
+    .filter(s => s.length > 1 && s.length < 60)
+    .filter((v, i, a) => a.findIndex(x => quitarTildes(x) === quitarTildes(v)) === i)
+    .slice(0, 12)
+    .join(", ");
+}
+
+// Lee un perfume de Fragrantica. Primero mira lo ya conocido; si no, se lo pide
+// al servidor de Perfuma, que guarda una caché compartida por las tres tiendas.
+async function extraerFragrantica(url) {
+  url = String(url || "").trim();
+  const mId = url.match(/-(\d+)\.html/);
+  const idFrag = mId ? mId[1] : "";
+  const fotoUrl = idFrag ? `https://fimgs.net/mdimg/perfume/375x500.${idFrag}.jpg` : "";
+  const cacheKey = `perfuma_v7_cache_${idFrag || url}`;
+
+  let nombreUrl = "Perfume consultado", marcaUrl = "";
+  const partes = url.split("/perfume/");
+  if (partes[1]) {
+    const seg = partes[1].split("/");
+    if (seg.length >= 2) {
+      marcaUrl = seg[0].replace(/-/g, " ");
+      nombreUrl = seg[1].replace(/-\d+\.html.*$/, "").replace(/-/g, " ");
+    }
+  }
+  const sinDatos = extra => ({ foto: fotoUrl, nombre: nombreUrl, marca: marcaUrl, ...extra });
+
+  try {
+    const g = JSON.parse(localStorage.getItem(cacheKey) || "null");
+    if (g && g.acordes && g.acordes.length && g.genero) return g;
+  } catch (e) {}
+
+  // Si el perfume ya está en el catálogo, no hay nada que consultar afuera.
+  if (idFrag) {
+    const enCat = catalogoBruto.find(c => String(c.URL_Fragrantica || "").includes(`-${idFrag}.html`));
+    if (enCat && enCat.Acordes) {
+      const r = {
+        nombre: enCat.Perfume, marca: enCat.Marca || marcaUrl,
+        acordes: enCat.Acordes.split(/[,;/]+/).map(a => normalizarAcorde(a)).filter(Boolean),
+        genero: detectarGenero(enCat.Genero), notas: enCat.Notas || "",
+        foto: fotoUrl || enCat.Foto_URL
+      };
+      try { localStorage.setItem(cacheKey, JSON.stringify(r)); } catch (e) {}
+      return r;
+    }
+  }
+
+  let d = {}, ok = false;
+  try {
+    const resp = await fetch(`./api/fragrantica?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+    ok = resp.ok;
+    d = await resp.json().catch(() => ({}));
+  } catch (e) {
+    return sinDatos({ error: "No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo." });
+  }
+  if (!ok || !d.texto) return sinDatos({ error: d.error || "No se pudo leer esa página de Fragrantica." });
+
+  const acordes = extraerAcordesQuirurgicoTexto(d.texto);
+  if (!acordes.length) return sinDatos({ error: "Esa página de Fragrantica no muestra acordes principales." });
+
+  const mTit = d.texto.match(/Title:\s*(.+)/i);
+  const mH1 = d.texto.match(/^#\s+(.+)$/m);
+  const paraGenero = `${mTit ? mTit[1] : ""} ${mH1 ? mH1[1] : ""}`.trim() || d.texto.slice(0, 350);
+  const resultado = {
+    nombre: limpiarNombrePerfume(mTit ? mTit[1] : nombreUrl) || nombreUrl,
+    marca: marcaUrl,
+    acordes,
+    genero: detectarGenero(paraGenero),
+    notas: extraerNotasDeTexto(d.texto),
+    foto: fotoUrl
+  };
+  try { localStorage.setItem(cacheKey, JSON.stringify(resultado)); } catch (e) {}
+  return resultado;
+}
+
 // ===== Administración =====
 // La contraseña y el token de GitHub ya no están en esta página: los guarda el
 // servidor (carpeta functions/). Aquí sólo vive la sesión, y sólo en memoria.
@@ -1339,6 +1288,7 @@ let descartadosGuardados = [];  // copia de lo último que se guardó
 let vistaSugerencias = "pendientes";
 let limiteSugerencias = 60;
 let sugerenciaEnCurso = null;
+let notasDetectadas = "";
 
 async function api(ruta, cuerpo) {
   let r;
@@ -1612,8 +1562,33 @@ function prepararAgregar(sku) {
 
 function limpiarFormularioAgregar() {
   sugerenciaEnCurso = null;
+  notasDetectadas = "";
   ["admUrl", "admNombre", "admMarca", "admAcordes", "admGen", "admSku"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("ayudaSugerencia").classList.add("hidden");
+}
+
+async function autocompletarDesdeFragranticaAdmin() {
+  const url = document.getElementById("admUrl").value.trim();
+  if (!url) return;
+  const msg = document.getElementById("msgNuevoPerfume");
+  const btn = document.getElementById("btnAutoFrag");
+  btn.disabled = true;
+  msg.innerHTML = `<div class="alert-info">Leyendo los acordes, el género y las notas en Fragrantica…</div>`;
+  try {
+    const d = await extraerFragrantica(url);
+    if (d.error) {
+      msg.innerHTML = `<div class="alert-warn">${esc(d.error)}</div>`;
+      return;
+    }
+    if (d.nombre && !document.getElementById("admNombre").value.trim()) document.getElementById("admNombre").value = d.nombre;
+    if (d.marca && !document.getElementById("admMarca").value.trim()) document.getElementById("admMarca").value = d.marca;
+    if (d.acordes?.length) document.getElementById("admAcordes").value = d.acordes.join(", ");
+    if (d.genero) document.getElementById("admGen").value = d.genero;
+    if (d.notas) notasDetectadas = d.notas;
+    msg.innerHTML = `<div class="alert-success">Detectado: <b>${esc(etiquetaGenero(d.genero))}</b>. Acordes: ${esc(d.acordes.join(", "))}.${d.notas ? ` Notas: ${esc(d.notas)}.` : ""}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Deja el perfume en la lista de cambios. Se publica al pulsar "Guardar cambios".
@@ -1639,6 +1614,7 @@ async function guardarNuevoPerfumeAdmin() {
         if (d.genero) { gen = d.genero; document.getElementById("admGen").value = gen; }
         if (!nombre && d.nombre) { nombre = d.nombre; document.getElementById("admNombre").value = nombre; }
         if (!marca && d.marca) { marca = d.marca; document.getElementById("admMarca").value = marca; }
+        if (d.notas) notasDetectadas = d.notas;
       }
     }
 
@@ -1655,7 +1631,7 @@ async function guardarNuevoPerfumeAdmin() {
     const mId = url.match(/-(\d+)\.html/);
     porAgregar.push({
       SKU: sku, Perfume: nombre, Marca: marca, Categoria: cat,
-      Genero: gen || "Para Hombres y Mujeres", Precio: precio, Acordes: acordes, Notas: "",
+      Genero: gen || "Para Hombres y Mujeres", Precio: precio, Acordes: acordes, Notas: notasDetectadas,
       Foto_URL: mId ? `https://fimgs.net/mdimg/perfume/375x500.${mId[1]}.jpg` : "",
       URL_Fragrantica: url, Stock: "Si"
     });

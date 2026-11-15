@@ -685,8 +685,8 @@ async function cargarDatosIniciales() {
     if (resXlsx.ok) {
       const buf = await resXlsx.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
-      const hoja = wb.SheetNames.includes("Stock actual") ? "Stock actual" : wb.SheetNames[0];
-      relbaseFilas = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { range: 5, defval: "" });
+      const h = hojaStock(wb);
+      relbaseFilas = h ? h.filas : [];
     }
     actualizarVistaTienda();
   } catch (e) {
@@ -838,6 +838,21 @@ function descargarCatalogoExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Catalogo Maestro");
   XLSX.writeFile(wb, "Catalogo_Maestro_Perfuma.xlsx");
+}
+
+// La librería que lee Excel descarta las filas vacías del principio, así que
+// la cabecera no siempre queda a la misma altura. Se busca por su contenido,
+// nunca por un número de fila fijo.
+function hojaStock(wb) {
+  const nombre = wb.SheetNames.includes("Stock actual") ? "Stock actual" : wb.SheetNames[0];
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: "", blankrows: true });
+  const iCab = aoa.findIndex(f => Array.isArray(f) && f.includes("Código") && f.includes("Producto"));
+  if (iCab === -1) return null;
+  const cabecera = aoa[iCab].map(c => String(c));
+  const filas = aoa.slice(iCab + 1)
+    .filter(f => Array.isArray(f) && f.some(c => String(c ?? "").trim() !== ""))
+    .map(f => Object.fromEntries(cabecera.map((k, j) => [k, f[j] ?? ""])));
+  return { nombre, aoa, iCab, cabecera, filas };
 }
 
 // ===== Interfaz (rediseño) =====
@@ -1781,16 +1796,20 @@ async function guardarCambios() {
 // ---------- Stock ----------
 // Quita del Excel de Relbase las columnas de costos antes de publicarlo: el
 // archivo queda descargable para cualquiera que abra la página.
-const COLUMNAS_PRIVADAS = ["costo promedio", "total", "ultimo costo promedio"];
+// Columnas que NO se publican: los costos, porque son sensibles, y unas
+// cuantas que la página no usa y pesan mucho (la de Ubicación repite el
+// listado completo de bodegas en cada una de las 4.000 filas).
+const COLUMNAS_NO_PUBLICADAS = [
+  "costo promedio", "total", "ultimo costo promedio",
+  "ubicacion", "tipo", "estado", "codigo barra"
+];
 
 function quitarColumnasPrivadas(wb) {
-  const hoja = wb.SheetNames.includes("Stock actual") ? "Stock actual" : wb.SheetNames[0];
-  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, defval: "", blankrows: true });
-  const iCab = aoa.findIndex((f, i) => i < 20 && f.includes("Código") && f.includes("Producto"));
-  if (iCab !== 5) throw new Error("formato inesperado");
+  const h = hojaStock(wb);
+  if (!h) throw new Error("no se encontró la cabecera del reporte");
   const fuera = new Set();
-  aoa[iCab].forEach((c, i) => { if (COLUMNAS_PRIVADAS.includes(quitarTildes(c))) fuera.add(i); });
-  const limpio = aoa.map((f, i) => (i < iCab ? f : f.filter((_, j) => !fuera.has(j))));
+  h.cabecera.forEach((c, i) => { if (COLUMNAS_NO_PUBLICADAS.includes(quitarTildes(c))) fuera.add(i); });
+  const limpio = h.aoa.map(f => (Array.isArray(f) ? f.filter((_, j) => !fuera.has(j)) : []));
   const nuevo = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(nuevo, XLSX.utils.aoa_to_sheet(limpio), "Stock actual");
   return { libro: nuevo, quitadas: fuera.size };
@@ -1809,8 +1828,8 @@ async function subirRelbaseNube() {
   try {
     const buf = await inp.files[0].arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
-    const hoja = wb.SheetNames.includes("Stock actual") ? "Stock actual" : wb.SheetNames[0];
-    const filas = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { range: 5, defval: "" });
+    const h = hojaStock(wb);
+    const filas = h ? h.filas : [];
     if (!filas.length || !("Código" in filas[0]) || !(Object.values(MAPA_BODEGAS)[0] in filas[0])) {
       msg.innerHTML = `<div class="alert-warn">Ese archivo no parece el reporte “Stock actual” de Relbase: no trae las columnas de código y bodegas. No se subió nada.</div>`;
       return;
@@ -1819,7 +1838,8 @@ async function subirRelbaseNube() {
     let contenido;
     try {
       const { libro } = quitarColumnasPrivadas(wb);
-      contenido = XLSX.write(libro, { type: "base64", bookType: "xlsx" });
+      // Sin comprimir, el archivo reescrito pesa casi diez veces el original.
+      contenido = XLSX.write(libro, { type: "base64", bookType: "xlsx", compression: true });
     } catch (e) {
       msg.innerHTML = `<div class="alert-warn">No se pudieron quitar las columnas de costos de este archivo, así que no se subió. Avisa a quien mantiene la página.</div>`;
       return;

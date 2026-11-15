@@ -1055,6 +1055,56 @@ function etiquetaGenero(g) {
   return { "Para Hombres": "Hombre", "Para Mujeres": "Mujer", "Para Hombres y Mujeres": "Unisex" }[g] || g;
 }
 
+// ---- Presentaciones del mismo perfume ----
+// En el catálogo un mismo perfume puede estar varias veces: el set, otro
+// tamaño, otra concentración. Si se recomiendan dos presentaciones del mismo
+// se desperdicia un espacio, así que se deja una sola.
+const RE_TAMANO = /\b\d+\s*(?:ml|cc)\b/gi;
+const RE_PRESENTACION = /\b(?:set|edp|edt|edc|eau de parfum|eau de toilette|eau de cologne|extrait de parfum|extrait|parfum|cologne|hombre|mujer|unisex|men|women|man|woman|pour homme|pour femme|for men|for women)\b/gi;
+
+// Dos filas son el mismo perfume sólo si, quitando eso, queda el mismo nombre.
+// Se compara el nombre completo, así "Yara" y "Yara Candy" siguen separados.
+function claveProducto(nombre) {
+  return quitarTildes(nombre)
+    .replace(RE_TAMANO, " ")
+    .replace(RE_PRESENTACION, " ")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Gana la presentación más simple: primero la que no es set, después la que no
+// trae tamaño, y entre tamaños el más chico.
+function puntajePresentacion(fila) {
+  const n = quitarTildes(fila.Perfume);
+  const m = n.match(/(\d+)\s*(?:ml|cc)\b/);
+  const tam = m ? parseInt(m[1], 10) : 0;
+  return (/\bset\b/.test(n) ? 1000 : 0) + (tam ? 100 + tam / 1000 : 0);
+}
+
+function etiquetaPresentacion(fila) {
+  const n = quitarTildes(fila.Perfume);
+  const partes = [];
+  if (/\bset\b/.test(n)) partes.push("Set");
+  const m = n.match(/(\d+)\s*(?:ml|cc)\b/);
+  if (m) partes.push(m[1] + " ml");
+  return partes.join(", ") || titulo(fila.Perfume);
+}
+
+// Deja una sola fila por perfume y anota las demás presentaciones.
+function agruparPresentaciones(candidatos) {
+  const grupos = new Map();
+  candidatos.forEach(c => {
+    const k = claveProducto(c.Perfume) || quitarTildes(c.Perfume);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(c);
+  });
+  return [...grupos.values()].map(lista => {
+    const ordenada = lista.slice().sort((a, b) => puntajePresentacion(a) - puntajePresentacion(b));
+    return { ...ordenada[0], Variantes: ordenada.slice(1).map(etiquetaPresentacion) };
+  }).sort((a, b) => b.Similitud - a.Similitud);
+}
+
 function renderizarResultados() {
   const cont = document.getElementById("contenedorResultados");
   const tienda = document.getElementById("selectTienda").value;
@@ -1091,8 +1141,7 @@ function renderizarResultados() {
     if (score > 0) candidatos.push({ ...fila, Similitud: score, Comunes: comunes });
   });
 
-  candidatos.sort((a, b) => b.Similitud - a.Similitud);
-  const top3 = candidatos.slice(0, 3);
+  const top3 = agruparPresentaciones(candidatos).slice(0, 3);
 
   const cabeza = `
     <div class="cabeza-resultado">
@@ -1166,6 +1215,7 @@ function renderizarResultados() {
             </dl>
             ${htmlEscalaAcordes(res.Acordes, comunesSet)}
             ${res.Notas ? `<p class="notas"><b>Notas:</b> ${esc(res.Notas)}</p>` : ""}
+            ${res.Variantes?.length ? `<p class="notas">También lo tienes en: <b>${esc(res.Variantes.join(" · "))}</b></p>` : ""}
           </div>
         </article>
       </div>

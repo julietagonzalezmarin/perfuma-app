@@ -178,6 +178,7 @@
     main { padding: 28px clamp(16px, 4vw, 48px) 64px; }
     .estado-stock { font-size: 13px; color: var(--humo); margin: 0 0 18px; }
     .estado-stock strong { color: var(--tinta); }
+    .fecha-stock { color: var(--humo); }
 
     /* Mensajes (las clases las usa la lógica existente) */
     .alert-info, .alert-success, .alert-warn {
@@ -687,6 +688,7 @@ async function cargarDatosIniciales() {
       const wb = XLSX.read(buf, { type: "array" });
       const h = hojaStock(wb);
       relbaseFilas = h ? h.filas : [];
+      fechaStock = (h && h.fecha) || '';
     }
     actualizarVistaTienda();
   } catch (e) {
@@ -852,8 +854,12 @@ function hojaStock(wb) {
   const filas = aoa.slice(iCab + 1)
     .filter(f => Array.isArray(f) && f.some(c => String(c ?? "").trim() !== ""))
     .map(f => Object.fromEntries(cabecera.map((k, j) => [k, f[j] ?? ""])));
-  return { nombre, aoa, iCab, cabecera, filas };
+  const fecha = (aoa.slice(0, iCab).map(f => String((Array.isArray(f) ? f[0] : "") || ""))
+    .find(s => /^fecha\s*:/i.test(s.trim())) || "").replace(/^\s*fecha\s*:\s*/i, "").trim();
+  return { nombre, aoa, iCab, cabecera, filas, fecha };
 }
+
+let fechaStock = "";
 
 // ===== Interfaz (rediseño) =====
 function nombreTienda(v) {
@@ -905,7 +911,8 @@ function actualizarVistaTienda() {
   const tienda = document.getElementById("selectTienda").value;
   const activos = obtenerCatalogoFiltradoTienda();
   document.getElementById("contadorStockTop").innerHTML =
-    `<strong>${nombreTienda(tienda)}</strong>: ${activos.length} perfumes con stock, de ${catalogoBruto.length} en el catálogo.`;
+    `<strong>${nombreTienda(tienda)}</strong>: ${activos.length} perfumes con stock, de ${catalogoBruto.length} en el catálogo.`
+    + (fechaStock ? ` <span class="fecha-stock">Stock del ${esc(fechaStock)}.</span>` : "");
   if (!busquedaActual.acordes.length) renderVacio();
   if (adminAutenticado) actualizarPanelesAdmin();
 }
@@ -1809,7 +1816,12 @@ function quitarColumnasPrivadas(wb) {
   if (!h) throw new Error("no se encontró la cabecera del reporte");
   const fuera = new Set();
   h.cabecera.forEach((c, i) => { if (COLUMNAS_NO_PUBLICADAS.includes(quitarTildes(c))) fuera.add(i); });
-  const limpio = h.aoa.map(f => (Array.isArray(f) ? f.filter((_, j) => !fuera.has(j)) : []));
+  // Las filas de arriba (título, empresa y fecha del reporte) se dejan intactas:
+  // esa información vive en la primera columna, que sí se quita más abajo.
+  const limpio = h.aoa.map((f, i) => {
+    if (!Array.isArray(f)) return [];
+    return i < h.iCab ? f.slice() : f.filter((_, j) => !fuera.has(j));
+  });
   const nuevo = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(nuevo, XLSX.utils.aoa_to_sheet(limpio), "Stock actual");
   return { libro: nuevo, quitadas: fuera.size };
@@ -1851,6 +1863,7 @@ async function subirRelbaseNube() {
       return;
     }
     relbaseFilas = filas;
+    if (h.fecha) fechaStock = h.fecha;
     inp.value = "";
     msg.innerHTML = `<div class="alert-success">Stock actualizado. Las tres tiendas lo verán en cerca de un minuto.</div>`;
     actualizarVistaTienda();

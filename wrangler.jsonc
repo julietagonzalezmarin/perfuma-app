@@ -19,5 +19,9 @@
     { "binding": "CACHE_FRAG", "id": "422f1f577fcf499ca08ca7953ca204e7" }
   ],
 
+  // Conserva las variables y secretos configurados en el panel de Cloudflare.
+  // Sin esto, cada publicación desde GitHub los borra.
+  "keep_vars": true,
+
   "observability": { "enabled": true }
 }

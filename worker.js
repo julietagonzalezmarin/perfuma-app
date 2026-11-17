@@ -258,7 +258,7 @@ async function rutaCambios(request, env) {
       lineas.push(cabecera.map(col => csvCampo(p[col])).join(","));
     }
     if (lineas.length) {
-      const nuevo = bom + texto.replace(/\s+$/, "") + "\n" + lineas.join("\n") + "\n";
+      const nuevo = bom + texto.replace(/\r\n?/g, "\n").replace(/\s+$/, "") + "\n" + lineas.join("\n") + "\n";
       const nombre = lineas.length === 1 ? String(agregar[0].Perfume) : `${lineas.length} perfumes`;
       await escribirArchivo(env, ARCHIVO_CATALOGO, textoABase64(nuevo), cat.sha, `Catálogo: agregado ${nombre}`);
       agregados = lineas.length;

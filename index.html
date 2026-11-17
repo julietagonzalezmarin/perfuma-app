@@ -671,7 +671,7 @@ async function cargarDatosIniciales() {
     const ts = Date.now();
     const resCsv = await fetch(`./catalogo_maestro.csv?t=${ts}`, { cache: "no-store" });
     const textoCsv = await resCsv.text();
-    const parsed = Papa.parse(textoCsv, { header: true, skipEmptyLines: true });
+    const parsed = Papa.parse(textoCsv.replace(/\r\n?/g, "\n"), { header: true, skipEmptyLines: true });
     catalogoBruto = (parsed.data || []).filter(r => r.Perfume);
 
     const resXlsx = await fetch(`./relbase_actual.xlsx?t=${ts}`, { cache: "no-store" });
@@ -1389,7 +1389,9 @@ function bytesABase64(bytes) {
 }
 
 function leerCsv(texto) {
-  const t = String(texto || "").replace(/^﻿/, "");
+  // Los saltos de línea se igualan: el archivo original usa \r\n y lo agregado después usa \n,
+  // y con la mezcla el lector juntaba todos los perfumes nuevos en una sola fila.
+  const t = String(texto || "").replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   if (!t.trim() || t.trim().startsWith("<")) return [];   // archivo ausente o página de error
   return (Papa.parse(t, { header: true, skipEmptyLines: true }).data || []);
 }

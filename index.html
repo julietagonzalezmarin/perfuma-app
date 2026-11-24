@@ -250,7 +250,6 @@
     .ficha { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; margin: 0 0 14px; }
     .ficha dt { color: var(--humo); }
     .ficha dd { margin: 0; font-weight: 500; }
-    .precio { font-size: 22px; font-weight: 700; letter-spacing: -.01em; color: var(--tinta); }
 
     /* Acordes: barras con los colores de Fragrantica (las vendedoras ya los reconocen) */
     .acordes { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
@@ -1221,7 +1220,6 @@ function renderizarResultados() {
           <div>
             <h3>${esc(titulo(res.Perfume))}</h3>
             <div class="marca-p">${esc(titulo(res.Marca))}, línea ${esc(res.Categoria)}</div>
-            <div class="precio">${esc(res.Precio)}</div>
             <dl class="ficha">
               <dt>SKU</dt><dd>${esc(res.SKU || "S/N")}</dd>
               <dt>Género</dt><dd>${etiquetaGenero(detectarGenero(res.Genero))}</dd>

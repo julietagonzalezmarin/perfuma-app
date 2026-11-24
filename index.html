@@ -247,6 +247,11 @@
     .lado.reco { background: linear-gradient(180deg, #FBF8FC, #fff 60%); }
     .lado.reco h3 { font-family: var(--serif); font-weight: 400; font-size: 26px; line-height: 1.1; margin: 0; }
     .lado.reco .marca-p { font-size: 14px; color: var(--humo); margin: 4px 0 12px; }
+    /* Dupe directo del perfume que pidió el cliente */
+    .sello-dupe { display: inline-block; margin: -4px 0 14px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #FBF0DA; color: #7A4A08; border: 1px solid #EBCB8B; }
+    .opciones .es-dupe { color: #9A5B0A; font-weight: 700; }
+    .mas-dupes { font-size: 13px; color: var(--humo); margin: -6px 0 16px; }
+    .mas-dupes b { color: var(--tinta); font-weight: 600; }
     .ficha { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; margin: 0 0 14px; }
     .ficha dt { color: var(--humo); }
     .ficha dd { margin: 0; font-weight: 500; }
@@ -335,6 +340,10 @@
     .sug td { vertical-align: middle; }
     .sug .nombre { font-weight: 600; }
     .sug .meta { font-size: 12px; color: var(--humo); }
+    .insp td { vertical-align: middle; }
+    .insp input { width: 100%; min-width: 260px; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid #DCD3E1; border-radius: 6px; background: #fff; }
+    .insp input.cambiado { border-color: var(--violeta); background: #FBF8FD; }
+    .insp .fuente { font-size: 12px; color: var(--humo); white-space: nowrap; }
     .sug .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .sug th.num { text-align: right; }
     .sug .cero { color: #B9AEC0; }
@@ -522,12 +531,27 @@
         <div class="campo"><label for="admCat">Línea</label><select id="admCat"><option value="Árabe">Árabe</option><option value="Diseñador">Diseñador</option></select></div>
         <div class="campo"><label for="admGen">Género <span class="ayuda">(se detecta con el link)</span></label><input type="text" id="admGen" placeholder="Se completa solo" readonly /></div>
         <div class="campo"><label for="admPrecio">Precio en tienda</label><input type="text" id="admPrecio" value="$29.990" /></div>
+        <div class="campo ancho"><label for="admInspirado">Inspirado en <span class="ayuda">(opcional: el link de Fragrantica del perfume original del que es dupe)</span></label><input type="text" id="admInspirado" placeholder="https://www.fragrantica.es/perfume/Xerjoff/Erba-Pura-55157.html" /></div>
       </div>
       <div class="fila-botones">
         <button class="btn btn-sec" id="btnAutoFrag" onclick="autocompletarDesdeFragranticaAdmin()">Completar desde el link</button>
         <button class="btn" id="btnGuardarPerfume" onclick="guardarNuevoPerfumeAdmin()">Agregar a los cambios</button>
       </div>
       <div id="msgNuevoPerfume"></div>
+    </section>
+
+    <section class="panel" id="panelInspiraciones">
+      <h3>Dupes e inspiraciones</h3>
+      <p class="desc">Indica de qué perfume original es dupe cada uno. Cuando un cliente busque ese original, el dupe aparece primero en el buscador. Pega el link de Fragrantica del original o escribe <b>Marca | Nombre</b>; si son varios, sepáralos con punto y coma. Borra el texto si no es dupe de nada.</p>
+      <div class="barra-sugerencias">
+        <div class="seg-claro" role="radiogroup" aria-label="Qué perfumes ver">
+          <label><input type="radio" name="vistaInsp" value="todos" checked onchange="cambiarVistaInspiraciones(this.value)"><span id="lblInspTodos">Todos</span></label>
+          <label><input type="radio" name="vistaInsp" value="sin" onchange="cambiarVistaInspiraciones(this.value)"><span id="lblInspSin">Sin registrar</span></label>
+        </div>
+        <label class="sr-only" for="filtroInspiraciones">Buscar en el catálogo</label>
+        <input type="search" id="filtroInspiraciones" placeholder="Buscar por nombre, marca, SKU u original" oninput="renderInspiraciones()" />
+      </div>
+      <div class="table-scroll alto" id="tablaInspiraciones"></div>
     </section>
 
     <section class="panel">
@@ -878,10 +902,106 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ===== Dupes e inspiraciones =====
+// inspiraciones.csv dice en qué perfume original está inspirado cada perfume del catálogo
+// (columna Inspirado_en: "Marca | Nombre | id de Fragrantica opcional", varios separados por ";").
+// Cuando el cliente busca ese original, sus dupes con stock salen antes que las opciones por acordes.
+let inspiraciones = [];
+let indiceInspiraciones = new Map();
+
+function textoPlano(s) {
+  return quitarTildes(String(s || "")).toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const PALABRAS_GENERICAS_MARCA = new Set(["parfums", "parfum", "perfumes", "perfume", "paris", "the", "by", "fragrances", "les", "prives", "premium", "and", "maison"]);
+function tokensMarca(m) {
+  return textoPlano(m).split(" ").filter(t => t.length >= 3 && !PALABRAS_GENERICAS_MARCA.has(t));
+}
+function marcasCompatibles(a, b) {
+  const ta = new Set(tokensMarca(a));
+  return tokensMarca(b).some(t => ta.has(t));
+}
+
+// "Sauvage Eau de Parfum (2018)" de Dior y "Sauvage" quedan con la misma clave: "sauvage".
+function claveOriginal(marca, nombre) {
+  const fuera = new Set([...tokensMarca(marca), "emporio", "by"]);
+  let n = " " + textoPlano(nombre) + " ", antes;
+  do {
+    antes = n;
+    for (const w of ["eau de parfum", "eau de toilette", "extrait de parfum", "le parfum", "extrait", "parfum", "edp", "edt", "cologne"]) n = n.split(" " + w + " ").join(" ");
+    n = n.replace(/ (19|20)\d\d /g, " ");
+  } while (n !== antes);
+  return n.trim().split(/\s+/).filter(t => t && !fuera.has(t)).join(" ");
+}
+
+function idFragrantica(url) {
+  const m = String(url || "").match(/-(\d+)\.html/);
+  return m ? m[1] : "";
+}
+
+// Marca y nombre del perfume a partir de su link de Fragrantica.
+function originalDesdeLink(url) {
+  const m = String(url || "").match(/\/perfume\/([^/]+)\/([^/?#]+?)-(\d+)\.html/i);
+  if (!m) return null;
+  const limpio = s => decodeURIComponent(s).replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  return { marca: limpio(m[1]), nombre: limpio(m[2]), id: m[3] };
+}
+
+function leerListaOriginales(texto) {
+  return String(texto || "").split(";").map(p => {
+    const [marca = "", nombre = "", id = ""] = p.split("|").map(x => x.trim());
+    return nombre ? { marca, nombre, id: id.replace(/\D/g, ""), clave: claveOriginal(marca, nombre) } : null;
+  }).filter(Boolean);
+}
+
+function claveFilaCatalogo(sku, perfume) {
+  return limpiarSku(sku) + "|" + textoPlano(perfume);
+}
+
+function reconstruirIndiceInspiraciones() {
+  indiceInspiraciones = new Map();
+  inspiraciones.forEach(r => {
+    if (r.SKU && r.Perfume && String(r.Inspirado_en || "").trim()) indiceInspiraciones.set(claveFilaCatalogo(r.SKU, r.Perfume), leerListaOriginales(r.Inspirado_en));
+  });
+}
+
+async function cargarInspiracionesPublicas() {
+  try {
+    const r = await fetch(`./inspiraciones.csv?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const t = (await r.text()).replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+    if (t.trim().startsWith("<")) return;
+    // Si el panel de administración ya trajo la versión del repositorio, esa manda.
+    if (typeof inspiracionesGuardadas !== "undefined" && inspiracionesGuardadas.length) return;
+    inspiraciones = (Papa.parse(t, { header: true, skipEmptyLines: true }).data || []).filter(f => f.SKU);
+    reconstruirIndiceInspiraciones();
+    if (busquedaActual.acordes.length) renderizarResultados();
+  } catch (e) {}
+}
+
+// El perfume que pidió el cliente, según el link que pegó la vendedora.
+function referenciaBuscada() {
+  const o = originalDesdeLink(busquedaActual.url);
+  if (!o) return null;
+  return { ...o, clave: claveOriginal(o.marca, o.nombre), etiqueta: titulo(o.marca + " " + o.nombre) };
+}
+
+// ¿Este perfume del catálogo es el mismo que busca el cliente, o su dupe?
+function relacionDirecta(fila, ref) {
+  if (!ref) return null;
+  if (ref.id && idFragrantica(fila.URL_Fragrantica) === ref.id) {
+    return { tipo: marcasCompatibles(fila.Marca, ref.marca) ? "mismo" : "dupe", original: ref.etiqueta };
+  }
+  const lista = indiceInspiraciones.get(claveFilaCatalogo(fila.SKU, fila.Perfume)) || [];
+  const coincide = lista.some(o => (o.id && o.id === ref.id) || (o.clave && o.clave === ref.clave && marcasCompatibles(o.marca, ref.marca)));
+  return coincide ? { tipo: "dupe", original: ref.etiqueta } : null;
+}
+
 // Cada computador recuerda su tienda: quien abre la página en Viña no tiene que elegirla cada vez.
 const CLAVE_TIENDA = "perfuma_tienda";
 
 function initTiendas() {
+  cargarInspiracionesPublicas();
   const sel = document.getElementById("selectTienda");
   try {
     const guardada = localStorage.getItem(CLAVE_TIENDA);
@@ -931,7 +1051,7 @@ function renderVacio() {
       ${svgFrasco(0, "vacioFrasco")}
       <div>
         <h2>Aquí aparecerá la mejor equivalencia</h2>
-        <p>Buscamos sólo entre los perfumes con stock en ${esc(tienda)}. Verás hasta tres opciones, su afinidad y qué acordes comparten.</p>
+        <p>Buscamos sólo entre los perfumes con stock en ${esc(tienda)}. Si tenemos su dupe, aparece primero; después, las opciones más parecidas por acordes.</p>
       </div>
     </div>`;
 }
@@ -1115,7 +1235,7 @@ function agruparPresentaciones(candidatos) {
   return [...grupos.values()].map(lista => {
     const ordenada = lista.slice().sort((a, b) => puntajePresentacion(a) - puntajePresentacion(b));
     return { ...ordenada[0], Variantes: ordenada.slice(1).map(etiquetaPresentacion) };
-  }).sort((a, b) => b.Similitud - a.Similitud);
+  }).sort((a, b) => (a.Prioridad ?? 9) - (b.Prioridad ?? 9) || b.Similitud - a.Similitud);
 }
 
 function renderizarResultados() {
@@ -1138,23 +1258,33 @@ function renderizarResultados() {
   }
 
   const activos = obtenerCatalogoFiltradoTienda();
-  const candidatos = [];
-  const mIdBuscado = String(busquedaActual.url || "").match(/-(\d+)\.html/);
-  const idBuscado = mIdBuscado ? mIdBuscado[1] : null;
+  const ref = referenciaBuscada();
+  const directos = [], candidatos = [];
 
   activos.forEach(fila => {
-    if (idBuscado && String(fila.URL_Fragrantica || "").includes(`-${idBuscado}.html`)) return;
-    if (detectarGenero(fila.Genero) !== genObjetivo) return;
-
     const catF = String(fila.Categoria || "").trim().toUpperCase();
     if (filtroCat === "Árabe" && !["ÁRABE", "ARABE"].includes(catF)) return;
     if (filtroCat === "Diseñador" && catF !== "DISEÑADOR") return;
 
     const { score, comunes } = calcularSimilitud(busquedaActual.acordes, fila.Acordes);
+    // El mismo perfume o su dupe va primero, sin filtrar por género: huele a lo que el cliente pidió.
+    const directo = relacionDirecta(fila, ref);
+    if (directo) {
+      directos.push({ ...fila, Similitud: score, Comunes: comunes, Directo: directo, Prioridad: directo.tipo === "mismo" ? 0 : 1 });
+      return;
+    }
+    if (detectarGenero(fila.Genero) !== genObjetivo) return;
     if (score > 0) candidatos.push({ ...fila, Similitud: score, Comunes: comunes });
   });
 
-  const top3 = agruparPresentaciones(candidatos).slice(0, 3);
+  // Hasta 3 dupes, y siempre al menos una opción parecida por acordes que no sea dupe.
+  const todosLosDupes = agruparPresentaciones(directos);
+  const dupes = todosLosDupes.slice(0, 3);
+  const dupesExtra = todosLosDupes.slice(3);
+  const yaMostrados = new Set(directos.map(d => claveProducto(d.Perfume) || quitarTildes(d.Perfume)));
+  const otros = agruparPresentaciones(candidatos.filter(c => !yaMostrados.has(claveProducto(c.Perfume) || quitarTildes(c.Perfume))))
+    .slice(0, Math.max(1, 3 - dupes.length));
+  const top3 = [...dupes, ...otros];
 
   const cabeza = `
     <div class="cabeza-resultado">
@@ -1186,14 +1316,17 @@ function renderizarResultados() {
       ${top3.map((c, i) => `
         <button role="tab" aria-selected="${i === idx}" onclick="irARecomendacion(${i})">
           <span class="n">${i + 1}</span>
-          <span style="min-width:0"><span class="t" style="display:block">${esc(titulo(c.Perfume))}</span><span class="s">${String(c.Similitud).replace(".", ",")}% de afinidad</span></span>
+          <span style="min-width:0"><span class="t" style="display:block">${esc(titulo(c.Perfume))}</span><span class="s">${c.Directo ? `<b class="es-dupe">${c.Directo.tipo === "mismo" ? "El mismo perfume" : "Dupe"}</b> · ` : ""}${String(c.Similitud).replace(".", ",")}% de afinidad</span></span>
         </button>`).join("")}
     </div>` : "";
+
+  const masDupes = dupesExtra.length ? `<p class="mas-dupes">También son dupes de ${esc(dupesExtra[0].Directo.original)} con stock aquí: <b>${dupesExtra.map(d => esc(titulo(d.Perfume))).join(", ")}</b>.</p>` : "";
 
   cont.innerHTML = `
     <div class="resultado">
       ${cabeza}
       ${opciones}
+      ${masDupes}
       <div class="comparacion">
         <article class="lado ref">
           <p class="rotulo">Lo que le gusta</p>
@@ -1220,6 +1353,7 @@ function renderizarResultados() {
           <div>
             <h3>${esc(titulo(res.Perfume))}</h3>
             <div class="marca-p">${esc(titulo(res.Marca))}, línea ${esc(res.Categoria)}</div>
+            ${res.Directo ? `<p class="sello-dupe">${res.Directo.tipo === "mismo" ? "Es el mismo perfume que busca el cliente" : `Inspirado en ${esc(res.Directo.original)}`}</p>` : ""}
             <dl class="ficha">
               <dt>SKU</dt><dd>${esc(res.SKU || "S/N")}</dd>
               <dt>Género</dt><dd>${etiquetaGenero(detectarGenero(res.Genero))}</dd>
@@ -1365,6 +1499,8 @@ let vistaSugerencias = "pendientes";
 let limiteSugerencias = 60;
 let sugerenciaEnCurso = null;
 let notasDetectadas = "";
+let inspiracionesGuardadas = [];   // copia de inspiraciones.csv tal como está en el repositorio
+let vistaInspiraciones = "todos";
 
 async function api(ruta, cuerpo) {
   let r;
@@ -1466,7 +1602,13 @@ async function cargarDatosAdmin() {
   if (cat.length) catalogoBruto = cat;
   descartados = leerCsv(r.descartados).filter(f => f.SKU);
   descartadosGuardados = descartados.slice();
+  if (typeof r.inspiraciones === "string") {
+    inspiraciones = leerCsv(r.inspiraciones).filter(f => f.SKU);
+    inspiracionesGuardadas = inspiraciones.map(f => ({ ...f }));
+    reconstruirIndiceInspiraciones();
+  }
   actualizarVistaTienda();
+  renderInspiraciones();
 }
 
 async function cargarDescartadosPublicos() {
@@ -1525,6 +1667,7 @@ function nombreParaCatalogo(producto) {
 
 function actualizarPanelesAdmin() {
   renderSugerencias();
+  renderInspiraciones();
   document.getElementById("tituloInventarioTotal").innerText = `Catálogo completo (${catalogoBruto.length} perfumes)`;
   const catHtml = catalogoBruto.map(c =>
     `<tr><td>${esc(c.SKU)}</td><td>${esc(c.Perfume)}</td><td>${esc(c.Marca)}</td><td>${esc(c.Categoria)}</td><td>${esc(etiquetaGenero(c.Genero))}</td><td>${esc(c.Precio)}</td><td>${esc(c.Acordes)}</td></tr>`
@@ -1642,7 +1785,7 @@ function prepararAgregar(sku) {
 function limpiarFormularioAgregar() {
   sugerenciaEnCurso = null;
   notasDetectadas = "";
-  ["admUrl", "admNombre", "admMarca", "admAcordes", "admGen", "admSku"].forEach(id => document.getElementById(id).value = "");
+  ["admUrl", "admNombre", "admMarca", "admAcordes", "admGen", "admSku", "admInspirado"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("ayudaSugerencia").classList.add("hidden");
 }
 
@@ -1707,6 +1850,13 @@ async function guardarNuevoPerfumeAdmin() {
       return;
     }
 
+    const inspirado = normalizarInspiracion(document.getElementById("admInspirado").value);
+    if (inspirado.error) {
+      msg.innerHTML = `<div class="alert-warn">${esc(inspirado.error)}</div>`;
+      return;
+    }
+    if (inspirado.texto) fijarInspiracion(sku, nombre, inspirado.texto);
+
     const mId = url.match(/-(\d+)\.html/);
     porAgregar.push({
       SKU: sku, Perfume: nombre, Marca: marca, Categoria: cat,
@@ -1717,6 +1867,7 @@ async function guardarNuevoPerfumeAdmin() {
     limpiarFormularioAgregar();
     msg.innerHTML = `<div class="alert-success">${esc(titulo(nombre))} quedó en los cambios. Pulsa “Guardar cambios” cuando termines de revisar.</div>`;
     renderSugerencias();
+    renderInspiraciones();
     actualizarBarraCambios();
   } finally {
     btn.disabled = false;
@@ -1735,7 +1886,7 @@ function cambiosDescartados() {
 
 function hayCambios() {
   const c = cambiosDescartados();
-  return porAgregar.length + c.descartar.length + c.restaurar.length > 0;
+  return porAgregar.length + c.descartar.length + c.restaurar.length + cambiosInspiraciones().length > 0;
 }
 
 function actualizarBarraCambios(mensaje, mal) {
@@ -1745,6 +1896,7 @@ function actualizarBarraCambios(mensaje, mal) {
   n(porAgregar.length, "perfume por agregar", "perfumes por agregar");
   n(c.descartar.length, "marcado como “No agregar”", "marcados como “No agregar”");
   n(c.restaurar.length, "vuelve a sugerirse", "vuelven a sugerirse");
+  n(cambiosInspiraciones().length, "dupe por guardar", "dupes por guardar");
   const barra = document.getElementById("barraCambios");
   const msg = document.getElementById("msgCambios");
   msg.textContent = mensaje || (partes.length ? "Sin guardar todavía." : "");
@@ -1756,6 +1908,9 @@ function actualizarBarraCambios(mensaje, mal) {
 function deshacerCambios() {
   porAgregar = [];
   descartados = descartadosGuardados.slice();
+  inspiraciones = inspiracionesGuardadas.map(f => ({ ...f }));
+  reconstruirIndiceInspiraciones();
+  renderInspiraciones();
   renderSugerencias();
   actualizarBarraCambios();
 }
@@ -1766,7 +1921,7 @@ async function guardarCambios() {
   const nAgregar = porAgregar.length;
   btn.disabled = true;
   actualizarBarraCambios("Guardando…");
-  const r = await api("cambios", { agregar: porAgregar, descartar: c.descartar, restaurar: c.restaurar });
+  const r = await api("cambios", { agregar: porAgregar, descartar: c.descartar, restaurar: c.restaurar, inspiraciones: cambiosInspiraciones() });
   btn.disabled = false;
   if (!r.ok) {
     if (adminAutenticado) actualizarBarraCambios(`No se guardó: ${r.error}`, true);
@@ -1775,10 +1930,114 @@ async function guardarCambios() {
   catalogoBruto = [...catalogoBruto, ...porAgregar];
   porAgregar = [];
   descartadosGuardados = descartados.slice();
+  inspiracionesGuardadas = inspiraciones.map(f => ({ ...f }));
   actualizarBarraCambios();
   actualizarVistaTienda();
+  renderInspiraciones();
   document.getElementById("msgNuevoPerfume").innerHTML = nAgregar
     ? `<div class="alert-success">Guardado. ${nAgregar === 1 ? "El perfume nuevo estará" : `Los ${nAgregar} perfumes nuevos estarán`} en el buscador de todas las tiendas en cerca de un minuto.</div>` : "";
+}
+
+// ---------- Dupes e inspiraciones ----------
+// Convierte lo que escribe el administrador en "Marca | Nombre | id; …".
+// Acepta links de Fragrantica (los traduce solo) o "Marca | Nombre".
+function normalizarInspiracion(texto) {
+  const partes = String(texto || "").split(";").map(p => p.trim()).filter(Boolean);
+  const salida = [];
+  for (const p of partes) {
+    if (/fragrantica\./i.test(p)) {
+      const o = originalDesdeLink(p);
+      if (!o) return { error: `No reconocí este link de Fragrantica: ${p}. Copia la dirección de la página del perfume original.` };
+      salida.push(`${o.marca} | ${o.nombre} | ${o.id}`);
+    } else if (p.includes("|")) {
+      const [marca, nombre, id] = p.split("|").map(x => x.trim());
+      if (!marca || !nombre) return { error: `Falta la marca o el nombre en “${p}”. Escríbelo como Marca | Nombre.` };
+      salida.push([marca, nombre, (id || "").replace(/\D/g, "")].filter(Boolean).join(" | "));
+    } else {
+      return { error: `“${p}”: pega el link de Fragrantica del original o escríbelo como Marca | Nombre (por ejemplo: Xerjoff | Erba Pura).` };
+    }
+  }
+  return { texto: salida.join("; ") };
+}
+
+function fijarInspiracion(sku, perfume, texto, fuente = "Administración") {
+  const k = claveFilaCatalogo(sku, perfume);
+  const i = inspiraciones.findIndex(f => claveFilaCatalogo(f.SKU, f.Perfume) === k);
+  if (!texto) { if (i >= 0) inspiraciones.splice(i, 1); }
+  else {
+    const fila = { SKU: String(sku).trim(), Perfume: String(perfume).trim(), Inspirado_en: texto, Fuente: fuente, Fecha: new Date().toISOString().slice(0, 10) };
+    if (i >= 0) inspiraciones[i] = fila; else inspiraciones.push(fila);
+  }
+  reconstruirIndiceInspiraciones();
+}
+
+function cambiosInspiraciones() {
+  const antes = new Map(inspiracionesGuardadas.map(f => [claveFilaCatalogo(f.SKU, f.Perfume), f]));
+  const ahora = new Map(inspiraciones.map(f => [claveFilaCatalogo(f.SKU, f.Perfume), f]));
+  const cambios = [];
+  ahora.forEach((f, k) => { if (!antes.has(k) || antes.get(k).Inspirado_en !== f.Inspirado_en) cambios.push({ SKU: f.SKU, Perfume: f.Perfume, Inspirado_en: f.Inspirado_en, Fuente: f.Fuente }); });
+  antes.forEach((f, k) => { if (!ahora.has(k)) cambios.push({ SKU: f.SKU, Perfume: f.Perfume, Inspirado_en: "" }); });
+  return cambios;
+}
+
+function textoInspiracionDe(fila) {
+  const k = claveFilaCatalogo(fila.SKU, fila.Perfume);
+  const f = inspiraciones.find(x => claveFilaCatalogo(x.SKU, x.Perfume) === k);
+  return f ? f : null;
+}
+
+// Muestra "Xerjoff | Erba Pura | 55157" como "Xerjoff | Erba Pura" para que se lea fácil.
+function inspiracionLegible(texto) {
+  return String(texto || "").split(";").map(p => p.split("|").map(x => x.trim()).slice(0, 2).join(" | ")).join("; ");
+}
+
+function cambiarVistaInspiraciones(v) {
+  vistaInspiraciones = v;
+  renderInspiraciones();
+}
+
+function renderInspiraciones() {
+  const cont = document.getElementById("tablaInspiraciones");
+  if (!cont || !adminAutenticado) return;
+  const scroll = cont.scrollTop;
+  const filas = [...catalogoBruto, ...porAgregar].filter(f => f.Perfume);
+  const conDato = filas.filter(f => textoInspiracionDe(f));
+  document.getElementById("lblInspTodos").textContent = `Todos (${filas.length})`;
+  document.getElementById("lblInspSin").textContent = `Sin registrar (${filas.length - conDato.length})`;
+  const q = quitarTildes(document.getElementById("filtroInspiraciones").value);
+  const guardadas = new Map(inspiracionesGuardadas.map(f => [claveFilaCatalogo(f.SKU, f.Perfume), f.Inspirado_en]));
+  const visibles = filas.filter(f => {
+    const ins = textoInspiracionDe(f);
+    if (vistaInspiraciones === "sin" && ins) return false;
+    return !q || quitarTildes(`${f.Perfume} ${f.Marca} ${f.SKU} ${ins ? ins.Inspirado_en : ""}`).includes(q);
+  }).sort((a, b) => String(a.Perfume).localeCompare(String(b.Perfume)));
+  if (!visibles.length) {
+    cont.innerHTML = `<div class="vacio-tabla">${q ? "Ningún perfume coincide con esa búsqueda." : "Todos los perfumes tienen su original registrado."}</div>`;
+    return;
+  }
+  cont.innerHTML = `<table class="sug insp"><thead><tr><th>Perfume</th><th>Inspirado en</th><th>Fuente</th></tr></thead><tbody>${
+    visibles.map(f => {
+      const ins = textoInspiracionDe(f);
+      const k = claveFilaCatalogo(f.SKU, f.Perfume);
+      const cambiado = (ins ? ins.Inspirado_en : "") !== (guardadas.get(k) || "");
+      return `<tr><td><div class="nombre">${esc(titulo(f.Perfume))}</div><div class="meta">${esc(titulo(f.Marca))}, SKU ${esc(f.SKU)}</div></td>
+        <td><input type="text" class="${cambiado ? "cambiado" : ""}" data-sku="${esc(f.SKU)}" data-perfume="${esc(f.Perfume)}" value="${esc(ins ? inspiracionLegible(ins.Inspirado_en) : "")}" placeholder="Link de Fragrantica o Marca | Nombre" aria-label="Original de ${esc(titulo(f.Perfume))}"></td>
+        <td class="fuente">${ins ? esc(ins.Fuente || "") : ""}</td></tr>`;
+    }).join("")}</tbody></table>`;
+  cont.scrollTop = scroll;
+}
+
+function cambioInspiracion(ev) {
+  const inp = ev.target.closest("input[data-sku]");
+  if (!inp) return;
+  const r = normalizarInspiracion(inp.value);
+  if (r.error) { alert(r.error); inp.focus(); return; }
+  const actual = textoInspiracionDe({ SKU: inp.dataset.sku, Perfume: inp.dataset.perfume });
+  // Si solo se ve distinto (sin el id de Fragrantica), no es un cambio.
+  if (actual && inspiracionLegible(actual.Inspirado_en) === inspiracionLegible(r.texto)) return;
+  fijarInspiracion(inp.dataset.sku, inp.dataset.perfume, r.texto);
+  renderInspiraciones();
+  actualizarBarraCambios();
 }
 
 // ---------- Stock ----------
@@ -1856,6 +2115,7 @@ async function subirRelbaseNube() {
 }
 
 document.getElementById("tablaRadarContainer").addEventListener("click", clicSugerencias);
+document.getElementById("tablaInspiraciones").addEventListener("change", cambioInspiracion);
 window.addEventListener("beforeunload", ev => { if (hayCambios()) { ev.preventDefault(); ev.returnValue = ""; } });
 cargarDescartadosPublicos();
 

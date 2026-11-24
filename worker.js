@@ -9,8 +9,9 @@
 //
 // Rutas:
 //   POST /api/login    { password }                        -> { sesion }
-//   GET  /api/datos                                        -> { catalogo, descartados }  (texto CSV al día)
-//   POST /api/cambios  { agregar, descartar, restaurar }   -> agrega perfumes y actualiza descartados
+//   GET  /api/datos                                        -> { catalogo, descartados, inspiraciones }  (texto CSV al día)
+//   POST /api/cambios  { agregar, descartar, restaurar, inspiraciones }
+//                      -> agrega perfumes, actualiza descartados y registra de qué original es dupe cada perfume
 //   POST /api/stock    { contenido }  (xlsx en base64)     -> reemplaza relbase_actual.xlsx
 //
 // Todo lo que no empiece con /api/ lo sirve Cloudflare como archivo estático
@@ -19,6 +20,7 @@
 const ARCHIVO_CATALOGO = "catalogo_maestro.csv";
 const ARCHIVO_DESCARTADOS = "descartados.csv";
 const ARCHIVO_STOCK = "relbase_actual.xlsx";
+const ARCHIVO_INSPIRACIONES = "inspiraciones.csv";
 const HORAS_SESION = 12;
 const MAX_STOCK_BASE64 = 8_000_000; // ~6 MB de Excel
 const MAX_FILAS = 500;
@@ -229,14 +231,17 @@ async function rutaLogin(request, env) {
 }
 
 async function rutaDatos(env) {
-  const [cat, desc] = await Promise.all([leerArchivo(env, ARCHIVO_CATALOGO), leerArchivo(env, ARCHIVO_DESCARTADOS)]);
-  return responder({ catalogo: cat.texto, descartados: desc.texto });
+  const [cat, desc, insp] = await Promise.all([
+    leerArchivo(env, ARCHIVO_CATALOGO), leerArchivo(env, ARCHIVO_DESCARTADOS), leerArchivo(env, ARCHIVO_INSPIRACIONES)
+  ]);
+  return responder({ catalogo: cat.texto, descartados: desc.texto, inspiraciones: insp.texto });
 }
 
 async function rutaCambios(request, env) {
   const cuerpo = await request.json().catch(() => ({}));
   const lista = x => (Array.isArray(x) ? x.slice(0, MAX_FILAS) : []);
   const agregar = lista(cuerpo.agregar), descartar = lista(cuerpo.descartar), restaurar = lista(cuerpo.restaurar);
+  const inspiraciones = lista(cuerpo.inspiraciones);
   let agregados = 0;
 
   if (agregar.length) {
@@ -279,6 +284,27 @@ async function rutaCambios(request, env) {
     if (JSON.stringify([...mapa]) !== antes) {
       const csv = ["SKU,Producto,Fecha", ...[...mapa.values()].map(f => f.slice(0, 3).map(csvCampo).join(","))].join("\n") + "\n";
       await escribirArchivo(env, ARCHIVO_DESCARTADOS, textoABase64(csv), d.sha, `Sugerencias: ${mapa.size} perfumes marcados como "no agregar"`);
+    }
+  }
+
+  if (inspiraciones.length) {
+    // Una fila por perfume del catálogo (SKU + nombre, porque hay SKU repetidos entre presentaciones).
+    const f = await leerArchivo(env, ARCHIVO_INSPIRACIONES);
+    const clave = (sku, perfume) => claveSku(sku) + "|" + String(perfume || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const mapa = new Map();
+    csvLeer(f.texto.replace(/^\uFEFF/, "")).slice(1).forEach(r => { if (r[0] && r[1]) mapa.set(clave(r[0], r[1]), r); });
+    const antes = JSON.stringify([...mapa]);
+    const hoy = new Date().toISOString().slice(0, 10);
+    inspiraciones.forEach(x => {
+      const sku = String((x && x.SKU) || "").trim(), perfume = String((x && x.Perfume) || "").trim();
+      if (!sku || !perfume) return;
+      const valor = String(x.Inspirado_en || "").trim().slice(0, 500);
+      if (!valor) mapa.delete(clave(sku, perfume));
+      else mapa.set(clave(sku, perfume), [sku, perfume, valor, String(x.Fuente || "Administración").slice(0, 40), hoy]);
+    });
+    if (JSON.stringify([...mapa]) !== antes) {
+      const csv = ["SKU,Perfume,Inspirado_en,Fuente,Fecha", ...[...mapa.values()].map(r => r.slice(0, 5).map(csvCampo).join(","))].join("\n") + "\n";
+      await escribirArchivo(env, ARCHIVO_INSPIRACIONES, textoABase64(csv), f.sha, `Dupes: ${mapa.size} perfumes con su original registrado`);
     }
   }
 

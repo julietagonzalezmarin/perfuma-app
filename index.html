@@ -646,9 +646,7 @@
       <div>
         <span class="titulo-filtro">Línea</span>
         <div class="segmentado" role="radiogroup" aria-label="Línea">
-          <label><input type="radio" name="filtroCat" value="Árabe/Diseñador" checked onchange="filtrarResultadosActuales()"><span>Todas</span></label>
-          <label><input type="radio" name="filtroCat" value="Árabe" onchange="filtrarResultadosActuales()"><span>Árabe</span></label>
-          <label><input type="radio" name="filtroCat" value="Diseñador" onchange="filtrarResultadosActuales()"><span>Diseñador</span></label>
+          <label><input type="radio" name="filtroCat" value="Árabe" checked onchange="filtrarResultadosActuales()"><span>Árabe</span></label>
         </div>
       </div>
       <div class="ejemplo" id="lineaEjemplo">¿Primera vez? <button type="button" onclick="probarEjemplo()">Prueba con Erba Pura de Xerjoff</button></div>
@@ -1502,11 +1500,11 @@ function renderizarResultados() {
     </div>`;
 
   if (!top3.length) {
-    const lineaTxt = filtroCat === "Árabe/Diseñador" ? "" : ` de la línea ${filtroCat}`;
+    const lineaTxt = "";
     cont.innerHTML = `<div class="resultado">${cabeza}
       <div class="sin-resultados">
         <h3>No hay equivalencias con stock en ${esc(nombreTienda(tienda))}</h3>
-        <p>Ningún perfume para ${etiquetaGenero(genObjetivo).toLowerCase()}${lineaTxt} comparte acordes con esta referencia. Prueba otra sucursal${genRef === "Para Hombres y Mujeres" ? ", cambia “Recomendar para”" : ""} o amplía la línea a “Todas”.</p>
+        <p>Ningún perfume para ${etiquetaGenero(genObjetivo).toLowerCase()}${lineaTxt} comparte acordes con esta referencia. Prueba otra sucursal${genRef === "Para Hombres y Mujeres" ? ", cambia “Recomendar para”" : ""} o busca por acordes.</p>
       </div></div>`;
     return;
   }
@@ -2174,7 +2172,7 @@ function renderResultadosInteractiva() {
     cont.innerHTML = `<div class="resultado">${cabeza}
       <div class="sin-resultados">
         <h3>Ningún perfume con stock en ${esc(tienda)} tiene esa combinación</h3>
-        <p>Quita alguno de los acordes${evita.length ? " o algo de lo que no quiere" : ""}, cambia la línea a “Todas” o prueba otra sucursal.</p>
+        <p>Quita alguno de los acordes${evita.length ? " o algo de lo que no quiere" : ""} o prueba otra sucursal.</p>
       </div></div>`;
     return 0;
   }

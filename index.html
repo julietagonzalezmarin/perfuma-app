@@ -625,8 +625,7 @@
         </div>
         <p class="int-leyenda">
           <span><i class="ley-gusta"></i>Un toque: le gusta</span>
-          <span><i class="ley-evita"></i>Dos toques: no lo quiere</span>
-          <span>Tres toques: se borra</span>
+          <span>Dos toques: se borra</span>
           <span>El número: cuántos perfumes con stock lo tienen</span>
         </p>
       </div>
@@ -1702,7 +1701,7 @@ async function extraerFragrantica(url) {
 // ===== Búsqueda interactiva =====
 // El cliente dice cómo le gustan los perfumes ("fresco y amaderado, nada dulce") y la
 // vendedora lo toca en una paleta de acordes con los colores de Fragrantica.
-// Un toque: le gusta. Dos toques: no lo quiere. Tres: se borra.
+// Un toque: le gusta. Dos toques: se borra.
 
 // Fragrantica en español usa estas formas; se unen a la misma clave que ya tiene color.
 Object.assign(SINONIMOS_ACORDES, {
@@ -1807,11 +1806,10 @@ function estadoDe(t) {
   return x ? x.e : "";
 }
 
-// Un toque: le gusta. Dos: no lo quiere. Tres: se borra.
+// Un toque: le gusta. Otro toque: se borra.
 function tocarFicha(t) {
   const i = intEstado.elegidos.findIndex(e => e.t === t);
   if (i === -1) intEstado.elegidos.push({ t, e: "gusta" });
-  else if (intEstado.elegidos[i].e === "gusta") intEstado.elegidos[i].e = "evita";
   else intEstado.elegidos.splice(i, 1);
   intEstado.limites = {};
   actualizarInteractiva({ burbujas: estadoDe(t) === "gusta" });
@@ -1965,7 +1963,7 @@ function marcarPaletaInteractiva() {
     const n = b.dataset.n;
     const sufijo = est === "gusta" ? "le gusta" : est === "evita" ? "no lo quiere" : (b.classList.contains("vial") ? `${n} perfumes con stock lo tienen` : "toda la familia");
     b.setAttribute("aria-label", `${inf.nombre}: ${sufijo}`);
-    b.title = est === "gusta" ? "Le gusta. Toca otra vez si NO lo quiere." : est === "evita" ? "No lo quiere. Toca otra vez para borrar." : (b.classList.contains("vial") ? `${n} perfumes con stock lo tienen. Toca si le gusta.` : "Toca si le gusta toda la familia.");
+    b.title = est === "gusta" ? "Le gusta. Toca otra vez para borrar." : est === "evita" ? "No lo quiere. Toca otra vez para borrar." : (b.classList.contains("vial") ? `${n} perfumes con stock lo tienen. Toca si le gusta.` : "Toca si le gusta toda la familia.");
     if (b.classList.contains("vial")) b.querySelector(".cuenta").textContent = est === "gusta" ? "✓" : est === "evita" ? "✕" : n;
     else b.querySelector(".fam-est").textContent = est === "gusta" ? "toda la familia" : est === "evita" ? "nada de esto" : "";
   });
@@ -2135,7 +2133,7 @@ function renderResultadosInteractiva() {
         <div class="muestras" aria-hidden="true">${["citrico", "aromatico", "acuatico", "rosa", "atalcado", "afrutados", "avainillado", "calido especiado", "amaderado", "cuero"].map(a => `<i style="background:${colorAcorde(a)[0]}"></i>`).join("")}</div>
         <div>
           <h2>Pregúntale cómo le gustan los perfumes</h2>
-          <p>Toca en la paleta lo que le gusta: una familia completa, como <b>Frescos</b>, o algo puntual, como <b>Vainilla</b>. Si algo no lo quiere, tócalo dos veces. Te mostramos los perfumes con stock en ${esc(tienda)} que más se parecen.</p>
+          <p>Toca en la paleta lo que le gusta: una familia completa, como <b>Frescos</b>, o algo puntual, como <b>Vainilla</b>. Para borrar algo, tócalo otra vez. Te mostramos los perfumes con stock en ${esc(tienda)} que más se parecen.</p>
         </div>
       </div>`;
     return 0;

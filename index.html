@@ -65,6 +65,7 @@
       padding: 18px clamp(16px, 4vw, 48px) 40px;
       position: relative;
       overflow: hidden;
+      overflow: clip; /* que un doble toque no la desplace hacia el lado */
     }
     /* Estela de vapor: una sola curva decorativa, la "estela" del perfume */
     .portada::after {
@@ -298,6 +299,148 @@
     .sin-resultados h3 { font-family: var(--serif); font-weight: 400; font-size: 22px; margin: 0 0 6px; }
     .sin-resultados p { margin: 0; color: var(--humo); }
 
+    /* ---------- BÚSQUEDA INTERACTIVA ----------
+       La paleta usa las mismas barras de colores de Fragrantica que los resultados:
+       el largo de cada barra dice cuántos perfumes con stock tienen ese acorde. */
+    .buscador.modo-interactivo { max-width: none; }
+    .interactiva {
+      margin-top: 12px; background: var(--oud-2); border-radius: var(--r-lg);
+      padding: 18px clamp(14px, 2vw, 24px) 22px; border: 1px solid rgba(244,236,246,.07);
+    }
+    .int-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; margin-bottom: 18px; }
+    .int-quien { display: flex; align-items: center; gap: 12px; }
+    .int-quien > span { font-size: 14px; color: #E8D9EE; font-weight: 600; }
+    .int-quien .segmentado { background: var(--oud); }
+    .int-quien .segmentado span { padding: 7px 16px; font-size: 14px; }
+    .int-quien .segmentado input:checked + span { background: #F4ECF6; color: var(--oud); font-weight: 600; }
+    .int-leyenda { margin: 0; font-size: 12.5px; color: #B9A8C0; display: flex; gap: 6px 18px; flex-wrap: wrap; }
+    .int-leyenda i { display: inline-block; width: 20px; height: 11px; border-radius: 0 6px 6px 0; vertical-align: -1px; margin-right: 7px; }
+    .int-leyenda .ley-gusta { background: #8CD964; box-shadow: 0 0 0 1.5px var(--oud-2), 0 0 0 3px #fff; }
+    .int-leyenda .ley-evita { background: transparent; box-shadow: inset 3px 0 0 #F06292, inset 0 0 0 1px rgba(244,236,246,.35); }
+    .int-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 28px; align-items: start; }
+    .paleta { columns: 4 190px; column-gap: 26px; }
+    .paleta-cargando { color: #B9A8C0; margin: 0; }
+    .familia { break-inside: avoid; padding: 0 0 18px; }
+    .familia-btn {
+      display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 0 0 7px; margin: 0;
+      color: #F4ECF6; cursor: pointer; text-align: left; font: inherit;
+      user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    }
+    .familia-btn .fam-nom { font-family: var(--serif); font-size: 18px; line-height: 1.1; }
+    .familia-btn::after { content: ""; order: 3; flex: 1; height: 3px; border-radius: 2px; background: var(--g); opacity: .45; transition: height .15s, opacity .15s; }
+    .familia-btn .fam-est { order: 2; font-size: 11.5px; color: #E8D9EE; white-space: nowrap; }
+    .familia-btn:hover::after { opacity: .9; }
+    .familia-btn[data-estado="gusta"] .fam-nom { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+    .familia-btn[data-estado="gusta"]::after { height: 7px; opacity: 1; }
+    .familia-btn[data-estado="evita"] .fam-nom { text-decoration: line-through; color: #A994B2; }
+    .familia-btn[data-estado="evita"]::after { opacity: .15; }
+    .familia-fija { cursor: default; }
+    .vial {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      min-height: 28px; margin: 0 0 5px; padding: 4px 10px 4px 9px; border: 0; cursor: pointer;
+      background: var(--c); color: var(--t); border-radius: 0 999px 999px 0;
+      font-size: 12.5px; font-weight: 600; text-align: left; position: relative;
+      user-select: none; -webkit-user-select: none; touch-action: manipulation;
+      transition: transform .15s, opacity .2s, box-shadow .15s;
+    }
+    .vial .nom { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vial .cuenta { font-size: 11px; font-weight: 500; opacity: .72; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+    .vial:hover { transform: translateX(3px); }
+    .paleta.con-eleccion .vial:not([data-estado]) { opacity: .5; }
+    .paleta.con-eleccion .vial:not([data-estado]):hover { opacity: .9; }
+    .paleta .familia[data-estado-fam="gusta"] .vial:not([data-estado]) { opacity: 1; }
+    .paleta .familia[data-estado-fam="evita"] .vial:not([data-estado]) { opacity: .25; }
+    .vial[data-estado="gusta"] { box-shadow: 0 0 0 2px var(--oud-2), 0 0 0 4px #fff; opacity: 1; transform: translateX(4px); }
+    .vial[data-estado="gusta"] .cuenta, .vial[data-estado="evita"] .cuenta { font-size: 13px; font-weight: 700; opacity: 1; }
+    .vial[data-estado="evita"] {
+      background: transparent; color: #CDBFD3; text-decoration: line-through; text-decoration-thickness: 1.5px;
+      box-shadow: inset 5px 0 0 var(--c), inset 0 0 0 1px rgba(244,236,246,.28);
+    }
+    .vial:focus-visible, .familia-btn:focus-visible { outline: 2px solid var(--ambar-claro); outline-offset: 3px; }
+
+    .mezcla { position: sticky; top: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+    .frasco-mezcla { width: 116px; height: auto; overflow: visible; }
+    #liquidoMezcla { transition: y .7s cubic-bezier(.2,.7,.2,1), height .7s cubic-bezier(.2,.7,.2,1); }
+    .frasco-mezcla .burbujas circle { opacity: 0; }
+    .frasco-mezcla.burbujea .burbujas circle { animation: subir 1.1s ease-out forwards; }
+    .frasco-mezcla.burbujea .burbujas circle:nth-child(2) { animation-delay: .12s; }
+    .frasco-mezcla.burbujea .burbujas circle:nth-child(3) { animation-delay: .25s; }
+    .frasco-mezcla.burbujea .burbujas circle:nth-child(4) { animation-delay: .38s; }
+    @keyframes subir { 0% { opacity: 0; transform: translateY(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-70px); } }
+    .mezcla-titulo { font-family: var(--serif); font-size: 21px; line-height: 1.15; color: #fff; margin: 4px 0 0; }
+    .mezcla-ayuda { font-size: 13px; color: #B9A8C0; margin: 4px 0 0; }
+    .mezcla-lista { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; font-size: 12.5px; color: #E8D9EE; margin: 6px 0 0; }
+    .mezcla-lista .si i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 5px; vertical-align: 0; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+    .mezcla-lista .no { text-decoration: line-through; color: #A994B2; }
+    .mezcla-conteo { font-size: 13px; color: #CDBFD3; margin: 2px 0 0; min-height: 1.5em; }
+    .mezcla .btn-buscar { padding: 10px 18px; }
+    .btn-reiniciar { background: none; border: 0; color: #B9A8C0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-size: 13px; padding: 2px; }
+    .btn-reiniciar:hover { color: #fff; }
+
+    /* Resultados de la búsqueda interactiva */
+    .resultado-int { animation: none; }
+    .vacio-int { grid-template-columns: 120px 1fr; max-width: 760px; }
+    .vacio-int .muestras { display: flex; flex-direction: column; gap: 3px; }
+    .vacio-int .muestras i { display: block; height: 9px; border-radius: 0 6px 6px 0; }
+    .vacio-int .muestras i:nth-child(odd) { width: 100%; } .vacio-int .muestras i:nth-child(even) { width: 72%; }
+    .grupo { margin-top: 8px; padding-bottom: 22px; }
+    .grupo + .grupo { border-top: 1px solid var(--linea); padding-top: 22px; }
+    .grupo-cabeza { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; }
+    .grupo-cabeza h3 { font-family: var(--serif); font-weight: 400; font-size: 23px; margin: 0; }
+    .grupo-cabeza p { margin: 0; color: var(--humo); font-size: 13px; }
+    .grupo-vacio { color: var(--humo); margin: 0; }
+    .tarjetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .tarjeta {
+      background: var(--papel); border: 1px solid var(--linea); border-radius: var(--r-md); padding: 16px;
+      display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px 14px; align-content: start;
+    }
+    .tarjeta.primera { border-color: #CDB5D9; box-shadow: 0 14px 30px -20px rgba(43,20,51,.45); }
+    .foto-mini { position: relative; width: 78px; aspect-ratio: 3 / 4; border-radius: 8px; background: #F1ECF3; display: grid; place-items: center; }
+    .foto-mini img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; border-radius: 8px; }
+    .foto-mini .sin-foto { font-size: 11px; color: var(--humo); text-align: center; }
+    .puesto {
+      position: absolute; top: -7px; left: -7px; width: 24px; height: 24px; border-radius: 50%;
+      display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--violeta-suave); color: var(--violeta); border: 2px solid #fff;
+    }
+    .primera .puesto { background: var(--violeta); color: #fff; }
+    .tarjeta h4 { font-family: var(--serif); font-weight: 400; font-size: 19px; line-height: 1.12; margin: 0; }
+    .tarjeta .meta { font-size: 12.5px; color: var(--humo); margin: 4px 0 0; }
+    .tarjeta .meta.sku { font-variant-numeric: tabular-nums; }
+    .tarjeta .completo { grid-column: 1 / -1; }
+    .sello-dupe.chico { margin: 0 0 10px; padding: 3px 10px; font-size: 12px; }
+    .tiene { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12.5px; color: var(--humo); margin: 0 0 6px; }
+    .tiene span { margin-right: 2px; }
+    .tiene b { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--c); color: var(--t); box-shadow: inset 0 0 0 1px rgba(43,20,51,.08); }
+    .falta { font-size: 12.5px; color: var(--humo); margin: 0 0 6px; }
+    .ojo-txt { font-size: 12.5px; color: var(--error); margin: 0 0 6px; }
+    .acordes.mini { gap: 2px; margin-top: 8px; }
+    .acordes.mini .ac { font-size: 11px; padding: 2px 9px; }
+    .acordes.mini .ac:nth-child(1) { width: 100%; } .acordes.mini .ac:nth-child(2) { width: 90%; } .acordes.mini .ac:nth-child(3) { width: 81%; }
+    .acordes.mini .ac:nth-child(4) { width: 73%; } .acordes.mini .ac:nth-child(5) { width: 66%; } .acordes.mini .ac:nth-child(6) { width: 60%; }
+    .acordes.mini .ac:nth-child(7) { width: 56%; } .acordes.mini .ac:nth-child(8) { width: 52%; } .acordes.mini .ac:nth-child(9) { width: 49%; } .acordes.mini .ac:nth-child(10) { width: 46%; }
+    .acordes .ac.ojo { opacity: .38; text-decoration: line-through; }
+    .tarjeta .notas { margin-top: 10px; }
+    .btn-mas { margin-top: 14px; }
+
+    @media (max-width: 1080px) {
+      .int-cuerpo { grid-template-columns: minmax(0, 1fr) 180px; gap: 20px; }
+      .paleta { columns: 3 170px; }
+    }
+    @media (max-width: 760px) {
+      .int-cuerpo { grid-template-columns: 1fr; }
+      .int-quien { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .mezcla { order: -1; position: static; display: grid; grid-template-columns: 64px 1fr; text-align: left; align-items: center; gap: 4px 14px; }
+      .mezcla #frascoMezcla { grid-row: span 4; }
+      .frasco-mezcla { width: 64px; }
+      .mezcla-lista { justify-content: flex-start; }
+      .mezcla .btn-buscar { justify-self: start; }
+      .btn-reiniciar { justify-self: start; }
+      .paleta { columns: 2 140px; column-gap: 16px; }
+      .vial { min-height: 34px; font-size: 13px; }
+      .vacio-int { grid-template-columns: 1fr; }
+      .vacio-int .muestras { flex-direction: row; } .vacio-int .muestras i { width: auto !important; flex: 1; height: 10px; }
+    }
+
     /* ---------- ADMIN ---------- */
     #vistaAdmin { display: grid; gap: 18px; }
     .panel { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--r-lg); padding: 22px 24px; }
@@ -443,12 +586,13 @@
   </nav>
 
   <section class="buscador" id="bloqueBuscador">
-    <h1>¿Qué perfume le gusta al cliente?</h1>
-    <p class="bajada">Pega su link de Fragrantica y te mostramos lo más parecido que tienes con stock en esta tienda.</p>
+    <h1 id="tituloBuscador">¿Qué perfume le gusta al cliente?</h1>
+    <p class="bajada" id="bajadaBuscador">Pega su link de Fragrantica y te mostramos lo más parecido que tienes con stock en esta tienda.</p>
 
     <div class="segmentado" role="radiogroup" aria-label="Forma de buscar">
       <label><input type="radio" name="modoBusqueda" value="link" checked onchange="cambiarModoBusqueda()"><span>Link de Fragrantica</span></label>
       <label><input type="radio" name="modoBusqueda" value="manual" onchange="cambiarModoBusqueda()"><span>Escribir acordes</span></label>
+      <label><input type="radio" name="modoBusqueda" value="interactiva" onchange="cambiarModoBusqueda()"><span>Búsqueda interactiva</span></label>
     </div>
 
     <div id="cajaInputLink" class="campo-busqueda">
@@ -467,6 +611,35 @@
         <option value="Para Mujeres">Mujer</option>
       </select>
       <button class="btn-buscar" onclick="ejecutarBusqueda()">Buscar en stock</button>
+    </div>
+
+    <div id="cajaInteractiva" class="interactiva hidden">
+      <div class="int-cabeza">
+        <div class="int-quien">
+          <span>¿Para quién es?</span>
+          <div class="segmentado" role="radiogroup" aria-label="Para quién es">
+            <label><input type="radio" name="generoInt" value="Para Hombres" onchange="cambiarGeneroInteractiva(this.value)"><span>Hombre</span></label>
+            <label><input type="radio" name="generoInt" value="Para Mujeres" onchange="cambiarGeneroInteractiva(this.value)"><span>Mujer</span></label>
+            <label><input type="radio" name="generoInt" value="Cualquiera" checked onchange="cambiarGeneroInteractiva(this.value)"><span>Cualquiera</span></label>
+          </div>
+        </div>
+        <p class="int-leyenda">
+          <span><i class="ley-gusta"></i>Un toque: le gusta</span>
+          <span><i class="ley-evita"></i>Dos toques: no lo quiere</span>
+          <span>Tres toques: se borra</span>
+          <span>El número: cuántos perfumes con stock lo tienen</span>
+        </p>
+      </div>
+      <div class="int-cuerpo">
+        <div id="paletaAcordes" class="paleta" aria-label="Acordes por familia"></div>
+        <aside class="mezcla" aria-live="polite">
+          <div id="frascoMezcla"></div>
+          <div id="mezclaTexto"></div>
+          <p class="mezcla-conteo" id="mezclaConteo"></p>
+          <button type="button" class="btn-buscar hidden" id="btnVerInteractiva" onclick="irAResultadosInteractiva()">Ver los perfumes</button>
+          <button type="button" class="btn-reiniciar hidden" id="btnReiniciarInteractiva" onclick="reiniciarInteractiva()">Empezar de nuevo</button>
+        </aside>
+      </div>
     </div>
 
     <div class="filtros">
@@ -1004,6 +1177,9 @@ const CLAVE_TIENDA = "perfuma_tienda";
 
 function initTiendas() {
   cargarInspiracionesPublicas();
+  // Al recargar, el navegador puede dejar marcada otra forma de buscar: se parte siempre desde el link.
+  document.querySelector('input[name="modoBusqueda"][value="link"]').checked = true;
+  document.querySelector('input[name="generoInt"][value="Cualquiera"]').checked = true;
   const sel = document.getElementById("selectTienda");
   try {
     const guardada = localStorage.getItem(CLAVE_TIENDA);
@@ -1032,6 +1208,7 @@ function cambiarTienda() {
   busquedaActual.indice = 0;
   sincronizarPildoras();
   actualizarVistaTienda();
+  if (modoBusquedaActual() === "interactiva") return;
   if (busquedaActual.acordes.length) renderizarResultados();
   else renderVacio();
 }
@@ -1042,11 +1219,13 @@ function actualizarVistaTienda() {
   document.getElementById("contadorStockTop").innerHTML =
     `<strong>${nombreTienda(tienda)}</strong>: ${activos.length} perfumes con stock, de ${catalogoBruto.length} en el catálogo.`
     + (fechaStock ? ` <span class="fecha-stock">Stock del ${esc(fechaStock)}.</span>` : "");
-  if (!busquedaActual.acordes.length) renderVacio();
+  if (modoBusquedaActual() === "interactiva") actualizarInteractiva();
+  else if (!busquedaActual.acordes.length) renderVacio();
   if (adminAutenticado) actualizarPanelesAdmin();
 }
 
 function renderVacio() {
+  if (modoBusquedaActual() === "interactiva") { actualizarInteractiva(); return; }
   const tienda = nombreTienda(document.getElementById("selectTienda").value);
   document.getElementById("contenedorResultados").innerHTML = `
     <div class="vacio">
@@ -1065,15 +1244,37 @@ function probarEjemplo() {
   ejecutarBusqueda();
 }
 
+const TEXTOS_MODO = {
+  link: ["¿Qué perfume le gusta al cliente?", "Pega su link de Fragrantica y te mostramos lo más parecido que tienes con stock en esta tienda."],
+  interactiva: ["¿Cómo le gustan los perfumes?", "Pregúntale qué le gusta y tócalo en la paleta. Los perfumes con stock aparecen abajo y cambian con cada toque."]
+};
+
 function cambiarModoBusqueda() {
-  const modo = document.querySelector('input[name="modoBusqueda"]:checked').value;
+  const modo = modoBusquedaActual();
+  const inter = modo === "interactiva";
   document.getElementById("cajaInputLink").classList.toggle("hidden", modo !== "link");
-  document.getElementById("cajaInputManual").classList.toggle("hidden", modo === "link");
+  document.getElementById("cajaInputManual").classList.toggle("hidden", modo !== "manual");
+  document.getElementById("cajaInteractiva").classList.toggle("hidden", !inter);
+  document.getElementById("bloqueBuscador").classList.toggle("modo-interactivo", inter);
+  document.getElementById("lineaEjemplo").classList.toggle("hidden", inter);
+  const [h1, bajada] = TEXTOS_MODO[inter ? "interactiva" : "link"];
+  document.getElementById("tituloBuscador").textContent = h1;
+  document.getElementById("bajadaBuscador").textContent = bajada;
+  document.getElementById("estadoBusqueda").innerHTML = "";
+  if (inter) {
+    if (!document.getElementById("frascoMezcla").children.length) document.getElementById("frascoMezcla").innerHTML = svgMezcla();
+    intEstado.contexto = "";
+    actualizarInteractiva();
+    return;
+  }
   document.getElementById(modo === "link" ? "inputUrlFrag" : "inputAcordesMan").focus();
+  if (busquedaActual.acordes.length) renderizarResultados();
+  else renderVacio();
 }
 
 async function ejecutarBusqueda() {
   const modo = document.querySelector('input[name="modoBusqueda"]:checked').value;
+  if (modo === "interactiva") { actualizarInteractiva(); return; }
   const est = document.getElementById("estadoBusqueda");
   const btn = document.getElementById("btnBuscarPrincipal");
 
@@ -1161,6 +1362,7 @@ function llenarFrascos() {
 
 function filtrarResultadosActuales() {
   busquedaActual.indice = 0;
+  if (modoBusquedaActual() === "interactiva") { intEstado.limites = {}; actualizarInteractiva(); return; }
   if (busquedaActual.acordes.length) renderizarResultados();
 }
 
@@ -1241,6 +1443,7 @@ function agruparPresentaciones(candidatos) {
 }
 
 function renderizarResultados() {
+  if (modoBusquedaActual() === "interactiva") { actualizarInteractiva(); return; }
   const cont = document.getElementById("contenedorResultados");
   const tienda = document.getElementById("selectTienda").value;
   const filtroCat = document.querySelector('input[name="filtroCat"]:checked').value;
@@ -1496,6 +1699,503 @@ async function extraerFragrantica(url) {
   };
   try { localStorage.setItem(cacheKey, JSON.stringify(resultado)); } catch (e) {}
   return resultado;
+}
+
+// ===== Búsqueda interactiva =====
+// El cliente dice cómo le gustan los perfumes ("fresco y amaderado, nada dulce") y la
+// vendedora lo toca en una paleta de acordes con los colores de Fragrantica.
+// Un toque: le gusta. Dos toques: no lo quiere. Tres: se borra.
+
+// Fragrantica en español usa estas formas; se unen a la misma clave que ya tiene color.
+Object.assign(SINONIMOS_ACORDES, {
+  "florales": "floral", "terrosos": "terroso", "amielado": "miel", "nutty": "nueces", "nuez": "nueces",
+  "ozonic": "ozonico", "cherry": "acerezado", "cereza": "acerezado", "chocolate": "cacao", "cocoa": "cacao",
+  "metallic": "metalico", "coniferous": "conifera", "terpenic": "terpenico", "violet": "violeta",
+  "soapy": "jabonoso", "white floral": "floral blanco", "rose": "rosa", "patchouli": "pachuli"
+});
+
+// Colores para los acordes que aún no tenían (en la línea de los de Fragrantica).
+[
+  ["balsamico", "#B7794B", "#fff"], ["animalico", "#8D6E3F", "#fff"], ["lactonico", "#FFF3D6", "#1f1f1f"],
+  ["nueces", "#A1714F", "#fff"], ["almendrado", "#EFD9B4", "#1f1f1f"], ["violeta", "#9575CD", "#fff"],
+  ["musgoso", "#6B7F2A", "#fff"], ["ozonico", "#A9DCF2", "#1f1f1f"], ["floral amarillo", "#FFE57F", "#1f1f1f"],
+  ["metalico", "#B0BEC5", "#1f1f1f"], ["herbal", "#7CB342", "#fff"], ["acerezado", "#C2185B", "#fff"],
+  ["terpenico", "#689F38", "#fff"], ["conifera", "#2E7D32", "#fff"], ["anis", "#C5E1A5", "#1f1f1f"],
+  ["mineral", "#9E9E9E", "#fff"], ["jabonoso", "#E1F5FE", "#1f1f1f"], ["whisky", "#B8732E", "#fff"],
+  ["ron", "#8B4513", "#fff"], ["vodka", "#E0F7FA", "#1f1f1f"]
+].forEach(([k, bg, fg]) => { if (!COLORES_ACORDES[k]) COLORES_ACORDES[k] = [bg, fg]; });
+
+// Familias en el orden de la rueda de colores: amarillos y verdes, azules, rosados,
+// lilas, naranjos, cremas y caramelos, rojizos, cafés y grises.
+const FAMILIAS_OLFATIVAS = [
+  { id: "frescos", nombre: "Frescos", adj: "fresco", plural: "frescos", color: "#7FD6E8",
+    acordes: ["citrico", "fresco especiado", "verde", "herbal", "aromatico", "lavanda", "fresco", "ozonico", "acuatico", "marino", "salado"] },
+  { id: "florales", nombre: "Florales", adj: "floral", plural: "florales", color: "#F48FB1",
+    acordes: ["floral amarillo", "floral blanco", "nardos", "floral", "rosa"] },
+  { id: "suaves", nombre: "Suaves", adj: "suave", plural: "suaves", color: "#E8DAEF",
+    acordes: ["jabonoso", "atalcado", "almizclado", "iris", "violeta"] },
+  { id: "frutales", nombre: "Frutales", adj: "frutal", plural: "frutales", color: "#FF7043",
+    acordes: ["coco", "tropical", "afrutados", "acerezado"] },
+  { id: "dulces", nombre: "Dulces", adj: "dulce", plural: "dulces", color: "#F06292",
+    acordes: ["lactonico", "avainillado", "miel", "almendrado", "dulce", "caramelo", "nueces", "cacao", "cafe"] },
+  { id: "especiados", nombre: "Especiados", adj: "especiado", plural: "especiados", color: "#D84315",
+    acordes: ["ambar", "especiado suave", "balsamico", "calido especiado", "canela", "anis"] },
+  { id: "amaderados", nombre: "Amaderados", adj: "amaderado", plural: "amaderados", color: "#B9936C",
+    acordes: ["amaderado", "terroso", "pachuli", "musgoso", "conifera", "terpenico", "madera de oud"] },
+  { id: "intensos", nombre: "Intensos", adj: "intenso", plural: "intensos", color: "#757575",
+    acordes: ["metalico", "mineral", "ahumado", "cuero", "animalico", "tabaco", "whisky", "ron", "vodka"] }
+];
+
+// Nombre para la vendedora y si funciona como adjetivo ("algo cítrico") o sustantivo ("con vainilla").
+const NOMBRES_ACORDE = {
+  "citrico": ["Cítrico", 1], "fresco especiado": ["Fresco especiado", 1], "verde": ["Verde", 1], "herbal": ["Herbal", 1],
+  "aromatico": ["Aromático", 1], "lavanda": ["Lavanda", 0], "fresco": ["Fresco", 1], "ozonico": ["Ozónico", 1],
+  "acuatico": ["Acuático", 1], "marino": ["Marino", 1], "salado": ["Salado", 1],
+  "floral amarillo": ["Floral amarillo", 1], "floral blanco": ["Floral blanco", 1], "nardos": ["Nardos", 0],
+  "floral": ["Floral", 1], "rosa": ["Rosa", 0], "jabonoso": ["Jabonoso", 1], "atalcado": ["Atalcado", 1],
+  "almizclado": ["Almizclado", 1], "iris": ["Iris", 0], "violeta": ["Violeta", 0],
+  "coco": ["Coco", 0], "tropical": ["Tropical", 1], "afrutados": ["Afrutado", 1], "acerezado": ["Cereza", 0],
+  "lactonico": ["Lácteo", 1], "avainillado": ["Vainilla", 0], "miel": ["Miel", 0], "almendrado": ["Almendra", 0],
+  "dulce": ["Dulce", 1], "caramelo": ["Caramelo", 0], "nueces": ["Nueces", 0], "cacao": ["Cacao", 0], "cafe": ["Café", 0],
+  "ambar": ["Ámbar", 0], "especiado suave": ["Especiado suave", 1], "balsamico": ["Balsámico", 1],
+  "calido especiado": ["Cálido especiado", 1], "canela": ["Canela", 0], "anis": ["Anís", 0],
+  "amaderado": ["Amaderado", 1], "terroso": ["Terroso", 1], "pachuli": ["Pachulí", 0], "musgoso": ["Musgo", 0],
+  "conifera": ["Pino", 0], "terpenico": ["Terpénico", 1], "madera de oud": ["Oud", 0],
+  "metalico": ["Metálico", 1], "mineral": ["Mineral", 1], "ahumado": ["Ahumado", 1], "cuero": ["Cuero", 0],
+  "animalico": ["Animálico", 1], "tabaco": ["Tabaco", 0], "whisky": ["Whisky", 0], "ron": ["Ron", 0], "vodka": ["Vodka", 0]
+};
+
+const FAMILIA_DE_ACORDE = new Map();
+FAMILIAS_OLFATIVAS.forEach(f => f.acordes.forEach(a => FAMILIA_DE_ACORDE.set(a, f.id)));
+const FAMILIA_POR_ID = new Map(FAMILIAS_OLFATIVAS.map(f => [f.id, f]));
+
+// Cuánto se nota un acorde según su lugar en la lista de Fragrantica (el primero domina).
+const PESO_POSICION = [1, .9, .82, .74, .66, .58, .5, .43, .37, .32, .28, .25];
+const pesoEn = p => PESO_POSICION[p] ?? .2;
+
+let intEstado = { elegidos: [], genero: "Cualquiera", limites: {}, contexto: "" };
+// elegidos: [{ t: "a:citrico" | "f:frescos", e: "gusta" | "evita" }] en el orden en que se tocaron.
+
+function modoBusquedaActual() {
+  const r = document.querySelector('input[name="modoBusqueda"]:checked');
+  return r ? r.value : "link";
+}
+
+function acordesCanonicos(str) {
+  return [...new Set(String(str || "").split(/[,;/]+/).map(normalizarAcorde).filter(Boolean))];
+}
+
+function nombreAcorde(a) {
+  return (NOMBRES_ACORDE[a] || [a.charAt(0).toUpperCase() + a.slice(1)])[0];
+}
+
+function colorAcorde(a) {
+  return COLORES_ACORDES[a] || ["#E4DEE7", "#2B1433"];
+}
+
+function infoFicha(t) {
+  const [tipo, clave] = t.split(":");
+  if (tipo === "f") {
+    const f = FAMILIA_POR_ID.get(clave);
+    return { tipo, clave, nombre: f.nombre, adj: f.adj, plural: f.plural, esAdj: true, bg: f.color, fg: "#1f1f1f" };
+  }
+  const [bg, fg] = colorAcorde(clave);
+  const [nombre, adj] = NOMBRES_ACORDE[clave] || [nombreAcorde(clave), 1];
+  return { tipo, clave, nombre, adj: nombre.toLowerCase(), plural: nombre.toLowerCase(), esAdj: !!adj, bg, fg };
+}
+
+function estadoDe(t) {
+  const x = intEstado.elegidos.find(e => e.t === t);
+  return x ? x.e : "";
+}
+
+// Un toque: le gusta. Dos: no lo quiere. Tres: se borra.
+function tocarFicha(t) {
+  const i = intEstado.elegidos.findIndex(e => e.t === t);
+  if (i === -1) intEstado.elegidos.push({ t, e: "gusta" });
+  else if (intEstado.elegidos[i].e === "gusta") intEstado.elegidos[i].e = "evita";
+  else intEstado.elegidos.splice(i, 1);
+  intEstado.limites = {};
+  actualizarInteractiva({ burbujas: estadoDe(t) === "gusta" });
+}
+
+function reiniciarInteractiva() {
+  intEstado.elegidos = [];
+  intEstado.limites = {};
+  actualizarInteractiva();
+}
+
+function cambiarGeneroInteractiva(v) {
+  intEstado.genero = v;
+  intEstado.limites = {};
+  actualizarInteractiva();
+}
+
+function verMasInteractiva(grupo) {
+  intEstado.limites[grupo] = (intEstado.limites[grupo] || 4) + 4;
+  renderResultadosInteractiva();
+}
+
+function irAResultadosInteractiva() {
+  document.getElementById("contenedorResultados").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Perfumes con stock en la tienda, con el filtro de línea.
+function catalogoInteractiva() {
+  const filtroCat = document.querySelector('input[name="filtroCat"]:checked').value;
+  return obtenerCatalogoFiltradoTienda().filter(fila => {
+    const catF = String(fila.Categoria || "").trim().toUpperCase();
+    if (filtroCat === "Árabe" && !["ÁRABE", "ARABE"].includes(catF)) return false;
+    if (filtroCat === "Diseñador" && catF !== "DISEÑADOR") return false;
+    return true;
+  });
+}
+
+function sirveParaGenero(fila) {
+  const g = detectarGenero(fila.Genero);
+  if (intEstado.genero === "Cualquiera") return true;
+  return g === intEstado.genero || g === "Para Hombres y Mujeres";
+}
+
+// ---- Puntaje ----
+// Por cada cosa que le gusta: cuánto se nota en el perfume. Si el perfume no tiene ese acorde
+// pero sí uno de la misma familia, suma un poco (pidió "acuático" y el perfume es marino).
+// Lo que no quiere: si está entre los 3 acordes principales, el perfume queda fuera.
+function puntuarInteractiva(fila, gustan, evita) {
+  const acs = acordesCanonicos(fila.Acordes);
+  if (!acs.length) return null;
+  const pos = new Map(acs.map((a, i) => [a, i]));
+  const mejorDeFamilia = fid => {
+    let p = -1;
+    acs.forEach((a, i) => { if (p === -1 && FAMILIA_DE_ACORDE.get(a) === fid) p = i; });
+    return p;
+  };
+
+  const ojo = [];
+  let castigo = 0;
+  for (const t of evita) {
+    const [tipo, clave] = t.split(":");
+    const p = tipo === "f" ? mejorDeFamilia(clave) : (pos.has(clave) ? pos.get(clave) : -1);
+    if (p === -1) continue;
+    if (p < 3) return null;
+    castigo += .3 * pesoEn(p);
+    ojo.push(tipo === "f" ? acs[p] : clave);
+  }
+
+  let suma = 0, dominan = 0, ambiente = 0;
+  const tiene = [], falta = [];
+  const top3 = acs.slice(0, 3);
+  for (const t of gustan) {
+    const [tipo, clave] = t.split(":");
+    // ¿Lo que domina el perfume es de la misma familia? (pidió "acuático" y abre cítrico y ozónico)
+    const fidT = tipo === "f" ? clave : FAMILIA_DE_ACORDE.get(clave);
+    ambiente += top3.filter(a => a === clave || (fidT && FAMILIA_DE_ACORDE.get(a) === fidT)).length / 3;
+    let p = -1;
+    if (tipo === "f") p = mejorDeFamilia(clave);
+    else if (pos.has(clave)) p = pos.get(clave);
+    if (p !== -1) {
+      suma += pesoEn(p);
+      tiene.push(acs[p]);
+      if (p < 3) dominan++;
+      continue;
+    }
+    falta.push(t);
+    const fid = FAMILIA_DE_ACORDE.get(clave);
+    const pf = fid ? mejorDeFamilia(fid) : -1;
+    if (pf !== -1) suma += .35 * pesoEn(pf);
+  }
+  if (!tiene.length) return null;
+  const base = suma / gustan.length;
+  const dominio = Math.min(1, dominan / Math.min(3, gustan.length));
+  const score = base * .6 + dominio * .2 + (ambiente / gustan.length) * .2 - castigo;
+  if (score < .25) return null;
+  return { score, tiene: [...new Set(tiene)], falta, ojo: [...new Set(ojo)], acs };
+}
+
+// ---- Paleta ----
+function contarAcordes(filas) {
+  const c = new Map();
+  filas.forEach(f => acordesCanonicos(f.Acordes).forEach(a => c.set(a, (c.get(a) || 0) + 1)));
+  return c;
+}
+
+function renderPaletaInteractiva(filas) {
+  const pal = document.getElementById("paletaAcordes");
+  if (!catalogoBruto.length) {
+    pal.innerHTML = `<p class="paleta-cargando">Cargando el catálogo…</p>`;
+    return;
+  }
+  const cuentas = contarAcordes(filas);
+  const conocidos = new Set(FAMILIA_DE_ACORDE.keys());
+  const otros = [...cuentas.keys()].filter(a => !conocidos.has(a) && cuentas.get(a) >= 2 && COLORES_ACORDES[a]);
+  const familias = [...FAMILIAS_OLFATIVAS];
+  if (otros.length) familias.push({ id: "otros", nombre: "Otros", acordes: otros, sinFicha: true });
+  const max = Math.max(1, ...[...cuentas.values()]);
+
+  pal.innerHTML = familias.map(f => {
+    const visibles = f.acordes.filter(a => (cuentas.get(a) || 0) >= 2 || estadoDe("a:" + a));
+    if (!visibles.length && !estadoDe("f:" + f.id)) return "";
+    const degradado = visibles.map(a => colorAcorde(a)[0]).join(", ") || f.color;
+    const cabeza = f.sinFicha
+      ? `<p class="familia-btn familia-fija">${esc(f.nombre)}</p>`
+      : `<button type="button" class="familia-btn" data-t="f:${f.id}" style="--g:linear-gradient(90deg, ${degradado}${visibles.length === 1 ? ", " + degradado : ""})"
+           onclick="tocarFicha(this.dataset.t)"><span class="fam-nom">${esc(f.nombre)}</span><span class="fam-est"></span></button>`;
+    const viales = visibles.map(a => {
+      const n = cuentas.get(a) || 0;
+      const [bg, fg] = colorAcorde(a);
+      const ancho = Math.round(64 + 36 * Math.sqrt(n / max));
+      return `<button type="button" class="vial" data-t="a:${esc(a)}" data-n="${n}" style="--c:${bg};--t:${fg};width:${ancho}%"
+        onclick="tocarFicha(this.dataset.t)"><span class="nom">${esc(nombreAcorde(a))}</span><span class="cuenta">${n}</span></button>`;
+    }).join("");
+    return `<div class="familia" data-fam="${f.id}">${cabeza}${viales}</div>`;
+  }).join("");
+}
+
+// Marca en la paleta lo que le gusta y lo que no, sin volver a dibujarla (no se pierde el foco).
+function marcarPaletaInteractiva() {
+  const pal = document.getElementById("paletaAcordes");
+  pal.classList.toggle("con-eleccion", intEstado.elegidos.some(e => e.e === "gusta"));
+  // Si eligió la familia completa, sus acordes se ven encendidos (o apagados si no la quiere).
+  pal.querySelectorAll(".familia[data-fam]").forEach(f => {
+    const est = estadoDe("f:" + f.dataset.fam);
+    if (est) f.dataset.estadoFam = est; else delete f.dataset.estadoFam;
+  });
+  pal.querySelectorAll("[data-t]").forEach(b => {
+    const est = estadoDe(b.dataset.t);
+    const inf = infoFicha(b.dataset.t);
+    if (est) b.dataset.estado = est; else delete b.dataset.estado;
+    const n = b.dataset.n;
+    const sufijo = est === "gusta" ? "le gusta" : est === "evita" ? "no lo quiere" : (b.classList.contains("vial") ? `${n} perfumes con stock lo tienen` : "toda la familia");
+    b.setAttribute("aria-label", `${inf.nombre}: ${sufijo}`);
+    b.title = est === "gusta" ? "Le gusta. Toca otra vez si NO lo quiere." : est === "evita" ? "No lo quiere. Toca otra vez para borrar." : (b.classList.contains("vial") ? `${n} perfumes con stock lo tienen. Toca si le gusta.` : "Toca si le gusta toda la familia.");
+    if (b.classList.contains("vial")) b.querySelector(".cuenta").textContent = est === "gusta" ? "✓" : est === "evita" ? "✕" : n;
+    else b.querySelector(".fam-est").textContent = est === "gusta" ? "toda la familia" : est === "evita" ? "nada de esto" : "";
+  });
+}
+
+// ---- Frasco: se llena con capas del color de cada cosa que le gusta ----
+function svgMezcla() {
+  return `
+  <svg class="frasco-mezcla" viewBox="0 0 120 196" role="img" aria-label="Su perfume">
+    <defs>
+      <clipPath id="clipMezcla"><rect x="14" y="58" width="92" height="132" rx="28"/></clipPath>
+      <linearGradient id="gradMezcla" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#F1EBF4"/><stop offset="1" stop-color="#F1EBF4"/></linearGradient>
+    </defs>
+    <rect x="42" y="4" width="36" height="24" rx="5" fill="#F4ECF6"/>
+    <rect x="49" y="28" width="22" height="30" fill="rgba(244,236,246,.28)"/>
+    <g clip-path="url(#clipMezcla)">
+      <rect x="14" y="58" width="92" height="132" fill="rgba(244,236,246,.07)"/>
+      <rect id="liquidoMezcla" x="14" y="190" width="92" height="0" fill="url(#gradMezcla)"/>
+      <g class="burbujas" fill="rgba(255,255,255,.75)">
+        <circle cx="40" cy="182" r="3"/><circle cx="62" cy="186" r="2.2"/><circle cx="80" cy="184" r="2.6"/><circle cx="52" cy="188" r="1.8"/>
+      </g>
+      <rect x="24" y="70" width="7" height="100" rx="3.5" fill="#fff" opacity=".22"/>
+    </g>
+    <rect x="14" y="58" width="92" height="132" rx="28" fill="none" stroke="rgba(244,236,246,.4)" stroke-width="1.5"/>
+  </svg>`;
+}
+
+function actualizarFrascoMezcla(gustan, burbujas) {
+  const liq = document.getElementById("liquidoMezcla");
+  const grad = document.getElementById("gradMezcla");
+  if (!liq || !grad) return;
+  const niveles = [0, .4, .58, .7, .8, .87, .92];
+  const alto = 132 * (niveles[Math.min(gustan.length, niveles.length - 1)]);
+  liq.setAttribute("y", 190 - alto);
+  liq.setAttribute("height", alto);
+  const colores = gustan.map(t => infoFicha(t).bg);
+  if (colores.length) {
+    const n = colores.length, suave = Math.min(.08, .3 / n);
+    grad.innerHTML = colores.map((c, i) => {
+      const a = i / n, b = (i + 1) / n;
+      return `<stop offset="${(i === 0 ? 0 : a + suave).toFixed(3)}" stop-color="${c}"/><stop offset="${(i === n - 1 ? 1 : b - suave).toFixed(3)}" stop-color="${c}"/>`;
+    }).join("");
+  }
+  if (burbujas) {
+    const svg = liq.closest("svg");
+    svg.classList.remove("burbujea");
+    void svg.getBoundingClientRect();
+    svg.classList.add("burbujea");
+  }
+}
+
+// "Algo fresco y amaderado, con vainilla"
+function unirConY(lista, conector = "y") {
+  if (lista.length <= 1) return lista.join("");
+  return lista.slice(0, -1).join(", ") + ` ${conector} ` + lista[lista.length - 1];
+}
+
+function fraseGustos(gustan) {
+  const inf = gustan.map(infoFicha);
+  const adjs = inf.filter(i => i.esAdj).map(i => i.adj);
+  const sust = inf.filter(i => !i.esAdj).map(i => i.adj);
+  let s = "Algo";
+  if (adjs.length) s += " " + unirConY(adjs);
+  if (sust.length) s += (adjs.length ? ", con " : " con ") + unirConY(sust);
+  return s;
+}
+
+function fraseEvita(evita) {
+  if (!evita.length) return "";
+  return "sin " + unirConY(evita.map(t => infoFicha(t)).map(i => i.tipo === "f" ? i.plural : i.adj), "ni");
+}
+
+function renderMezclaTexto(gustan, evita, total) {
+  const caja = document.getElementById("mezclaTexto");
+  if (!gustan.length && !evita.length) {
+    caja.innerHTML = `<p class="mezcla-titulo">Su perfume</p><p class="mezcla-ayuda">Toca en la paleta lo que le gusta al cliente.</p>`;
+  } else {
+    caja.innerHTML = `
+      <p class="mezcla-titulo">${gustan.length ? esc(fraseGustos(gustan)) : "Falta lo que le gusta"}</p>
+      <p class="mezcla-lista">
+        ${gustan.map(t => { const i = infoFicha(t); return `<span class="si" style="--c:${i.bg}"><i></i>${esc(i.nombre)}</span>`; }).join("")}
+        ${evita.map(t => `<span class="no">${esc(infoFicha(t).nombre)}</span>`).join("")}
+      </p>`;
+  }
+  const conteo = document.getElementById("mezclaConteo");
+  const btn = document.getElementById("btnVerInteractiva");
+  if (!gustan.length) {
+    conteo.textContent = evita.length ? "Elige al menos una cosa que le guste." : "";
+    btn.classList.add("hidden");
+  } else {
+    conteo.textContent = total ? `${total} ${total === 1 ? "perfume con stock se parece" : "perfumes con stock se parecen"}` : "Ningún perfume con stock tiene esa combinación";
+    btn.classList.toggle("hidden", !total);
+  }
+  document.getElementById("btnReiniciarInteractiva").classList.toggle("hidden", !gustan.length && !evita.length);
+}
+
+// ---- Todo junto ----
+function actualizarInteractiva(opts = {}) {
+  if (modoBusquedaActual() !== "interactiva") return;
+  const filas = catalogoInteractiva();
+  const enGenero = filas.filter(sirveParaGenero);
+  const contexto = [document.getElementById("selectTienda").value, document.querySelector('input[name="filtroCat"]:checked').value,
+    intEstado.genero, catalogoBruto.length, relbaseFilas.length, intEstado.elegidos.map(e => e.t).sort().join(",")].join("|");
+  // Sólo se vuelve a dibujar la paleta si cambió lo que hay en ella; si no, se marcan las fichas.
+  const contextoPaleta = contexto.split("|").slice(0, 5).join("|");
+  const nuevasFichas = intEstado.elegidos.some(e => !document.querySelector(`#paletaAcordes [data-t="${CSS.escape(e.t)}"]`));
+  if (contextoPaleta !== intEstado.contexto || nuevasFichas || !document.getElementById("paletaAcordes").children.length) {
+    renderPaletaInteractiva(enGenero);
+    intEstado.contexto = contextoPaleta;
+  }
+  marcarPaletaInteractiva();
+  const total = renderResultadosInteractiva();
+  const gustan = intEstado.elegidos.filter(e => e.e === "gusta").map(e => e.t);
+  const evita = intEstado.elegidos.filter(e => e.e === "evita").map(e => e.t);
+  actualizarFrascoMezcla(gustan, opts.burbujas);
+  renderMezclaTexto(gustan, evita, total);
+}
+
+// Los 6 acordes principales, y más abajo si ahí está algo de lo que pidió o de lo que no quiere.
+function htmlMiniAcordes(acs, tieneSet, ojoSet) {
+  const hasta = Math.min(10, Math.max(6, ...[...tieneSet, ...ojoSet].map(a => acs.indexOf(a) + 1)));
+  return `<div class="acordes mini">` + acs.slice(0, hasta).map(a => {
+    const [bg, fg] = colorAcorde(a);
+    const cls = tieneSet.has(a) ? "comun" : ojoSet.has(a) ? "ojo" : "otro";
+    return `<div class="ac ${cls}" style="background:${bg};color:${fg};">${esc(nombreAcorde(a).toLowerCase())}</div>`;
+  }).join("") + `</div>`;
+}
+
+function htmlTarjetaInteractiva(r, i, mostrarGenero) {
+  const onerr = `this.replaceWith(Object.assign(document.createElement('div'),{className:'sin-foto',textContent:'Sin foto'}))`;
+  const originales = indiceInspiraciones.get(claveFilaCatalogo(r.SKU, r.Perfume)) || [];
+  const tieneSet = new Set(r.Info.tiene), ojoSet = new Set(r.Info.ojo);
+  const faltan = r.Info.falta.map(t => infoFicha(t).nombre.toLowerCase());
+  // Entre los 5 primeros se nota; más abajo, apenas.
+  const fuertes = r.Info.tiene.filter(a => r.Info.acs.indexOf(a) < 5);
+  const suaves = r.Info.tiene.filter(a => r.Info.acs.indexOf(a) >= 5);
+  return `
+    <article class="tarjeta${i === 0 ? " primera" : ""}">
+      <div class="foto-mini"><span class="puesto">${i + 1}</span><img loading="lazy" src="${esc(fotoDe(r))}" alt="${esc(r.Perfume)}" onerror="${onerr}"></div>
+      <div class="tarjeta-info">
+        <h4>${esc(titulo(r.Perfume))}</h4>
+        <p class="meta">${esc(titulo(r.Marca))}, línea ${esc(r.Categoria)}${mostrarGenero ? `<br>${etiquetaGenero(detectarGenero(r.Genero))}` : ""}</p>
+        <p class="meta sku">SKU ${esc(r.SKU || "S/N")}</p>
+      </div>
+      <div class="completo">
+        ${originales.length ? `<p class="sello-dupe chico">Inspirado en ${esc(titulo(originales[0].marca + " " + originales[0].nombre))}</p>` : ""}
+        ${fuertes.length ? `<p class="tiene"><span>Tiene</span>${fuertes.map(a => { const [bg, fg] = colorAcorde(a); return `<b style="--c:${bg};--t:${fg}">${esc(nombreAcorde(a))}</b>`; }).join("")}</p>` : ""}
+        ${suaves.length ? `<p class="falta">${fuertes.length ? "Y algo" : "Algo"} de ${esc(unirConY(suaves.map(a => nombreAcorde(a).toLowerCase())))}, al fondo.</p>` : ""}
+        ${faltan.length ? `<p class="falta">No tiene ${esc(unirConY(faltan, "ni"))}.</p>` : ""}
+        ${r.Info.ojo.length ? `<p class="ojo-txt">Ojo: tiene algo de ${esc(unirConY(r.Info.ojo.map(a => nombreAcorde(a).toLowerCase())))}, al fondo.</p>` : ""}
+        ${htmlMiniAcordes(r.Info.acs, tieneSet, ojoSet)}
+        ${r.Notas ? `<p class="notas"><b>Notas:</b> ${esc(String(r.Notas).split(/\s*,\s*/).slice(0, 7).join(", "))}</p>` : ""}
+        ${r.Variantes?.length ? `<p class="notas">También en: <b>${esc(r.Variantes.join(", "))}</b></p>` : ""}
+      </div>
+    </article>`;
+}
+
+function renderResultadosInteractiva() {
+  const cont = document.getElementById("contenedorResultados");
+  const gustan = intEstado.elegidos.filter(e => e.e === "gusta").map(e => e.t);
+  const evita = intEstado.elegidos.filter(e => e.e === "evita").map(e => e.t);
+  const tienda = nombreTienda(document.getElementById("selectTienda").value);
+
+  if (!gustan.length) {
+    cont.innerHTML = `
+      <div class="vacio vacio-int">
+        <div class="muestras" aria-hidden="true">${["citrico", "aromatico", "acuatico", "rosa", "atalcado", "afrutados", "avainillado", "calido especiado", "amaderado", "cuero"].map(a => `<i style="background:${colorAcorde(a)[0]}"></i>`).join("")}</div>
+        <div>
+          <h2>Pregúntale cómo le gustan los perfumes</h2>
+          <p>Toca en la paleta lo que le gusta: una familia completa, como <b>Frescos</b>, o algo puntual, como <b>Vainilla</b>. Si algo no lo quiere, tócalo dos veces. Te mostramos los perfumes con stock en ${esc(tienda)} que más se parecen.</p>
+        </div>
+      </div>`;
+    return 0;
+  }
+
+  const candidatos = [];
+  catalogoInteractiva().forEach(fila => {
+    if (!sirveParaGenero(fila)) return;
+    const info = puntuarInteractiva(fila, gustan, evita);
+    if (info) candidatos.push({ ...fila, Similitud: Math.round(info.score * 1000) / 10, Info: info });
+  });
+  const ordenados = agruparPresentaciones(candidatos);
+
+  const gen = intEstado.genero;
+  const grupos = gen === "Cualquiera"
+    ? [{ id: "todos", titulo: "Los que más se parecen", filas: ordenados, mostrarGenero: true }]
+    : [
+        { id: "genero", titulo: gen === "Para Hombres" ? "Para hombre" : "Para mujer", filas: ordenados.filter(r => detectarGenero(r.Genero) === gen) },
+        { id: "unisex", titulo: "Unisex que también le pueden gustar", filas: ordenados.filter(r => detectarGenero(r.Genero) === "Para Hombres y Mujeres") }
+      ];
+
+  const quien = gen === "Para Hombres" ? "Para hombre" : gen === "Para Mujeres" ? "Para mujer" : "";
+  const sub = [quien, fraseEvita(evita)].filter(Boolean).join(", ");
+  const cabeza = `
+    <div class="cabeza-resultado">
+      <div>
+        <p class="pre">El cliente busca</p>
+        <h2>${esc(fraseGustos(gustan))}</h2>
+        ${sub ? `<div class="gen">${esc(sub.charAt(0).toUpperCase() + sub.slice(1))}</div>` : ""}
+      </div>
+    </div>`;
+
+  if (!ordenados.length) {
+    cont.innerHTML = `<div class="resultado">${cabeza}
+      <div class="sin-resultados">
+        <h3>Ningún perfume con stock en ${esc(tienda)} tiene esa combinación</h3>
+        <p>Quita alguno de los acordes${evita.length ? " o algo de lo que no quiere" : ""}, cambia la línea a “Todas” o prueba otra sucursal.</p>
+      </div></div>`;
+    return 0;
+  }
+
+  const htmlGrupos = grupos.map(g => {
+    const lim = intEstado.limites[g.id] || 4;
+    const vis = g.filas.slice(0, lim);
+    const resto = g.filas.length - vis.length;
+    const cuerpo = vis.length
+      ? `<div class="tarjetas">${vis.map((r, i) => htmlTarjetaInteractiva(r, i, g.mostrarGenero)).join("")}</div>`
+      : `<p class="grupo-vacio">No hay ${g.id === "unisex" ? "unisex" : "perfumes " + g.titulo.toLowerCase()} con stock que se parezcan.</p>`;
+    return `
+      <section class="grupo">
+        <div class="grupo-cabeza"><h3>${esc(g.titulo)}</h3><p>${g.filas.length} con stock</p></div>
+        ${cuerpo}
+        ${resto > 0 ? `<button type="button" class="btn btn-sec btn-mas" onclick="verMasInteractiva('${g.id}')">Ver ${Math.min(4, resto)} más</button>` : ""}
+      </section>`;
+  }).join("");
+
+  cont.innerHTML = `<div class="resultado resultado-int">${cabeza}${htmlGrupos}</div>`;
+  return ordenados.length;
 }
 
 // ===== Administración =====

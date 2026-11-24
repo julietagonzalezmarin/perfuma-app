@@ -282,6 +282,8 @@
     .cifra { font-family: var(--serif); font-size: 44px; line-height: 1; letter-spacing: -.02em; }
     .cifra small { font-size: 22px; }
     .cifra-label { font-size: 13px; color: var(--humo); margin-top: -4px; }
+    .medidor-dupe .cifra { color: #7A4A08; }
+    .medidor-dupe .cifra-label { margin-top: 4px; max-width: 180px; margin-left: auto; margin-right: auto; }
     .comunes { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin-top: 6px; }
     .comunes span { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--violeta-suave); color: var(--violeta); font-weight: 600; }
     .comunes-label { font-size: 12px; color: var(--humo); margin-top: 8px; }
@@ -1124,13 +1126,13 @@ function htmlEscalaAcordes(lista, comunesSet) {
 }
 
 // Frasco SVG: el líquido ámbar sube hasta el % de afinidad
-function svgFrasco(pct, id) {
+function svgFrasco(pct, id, etiqueta) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
   const top = 34, bottom = 136, alto = bottom - top;
   const h = alto * p / 100;
   const cid = "clip_" + (id || "f");
   return `
-  <svg class="frasco" viewBox="0 0 80 140" role="img" aria-label="Afinidad ${p}%">
+  <svg class="frasco" viewBox="0 0 80 140" role="img" aria-label="${etiqueta || `Afinidad ${p}%`}">
     <defs>
       <clipPath id="${cid}"><rect x="8" y="${top}" width="64" height="${alto}" rx="14"/></clipPath>
       <linearGradient id="${cid}_g" x1="0" y1="0" x2="0" y2="1">
@@ -1316,7 +1318,7 @@ function renderizarResultados() {
       ${top3.map((c, i) => `
         <button role="tab" aria-selected="${i === idx}" onclick="irARecomendacion(${i})">
           <span class="n">${i + 1}</span>
-          <span style="min-width:0"><span class="t" style="display:block">${esc(titulo(c.Perfume))}</span><span class="s">${c.Directo ? `<b class="es-dupe">${c.Directo.tipo === "mismo" ? "El mismo perfume" : "Dupe"}</b> · ` : ""}${String(c.Similitud).replace(".", ",")}% de afinidad</span></span>
+          <span style="min-width:0"><span class="t" style="display:block">${esc(titulo(c.Perfume))}</span><span class="s">${c.Directo ? `<b class="es-dupe">${c.Directo.tipo === "mismo" ? "El mismo perfume" : "Dupe directo"}</b>` : `${String(c.Similitud).replace(".", ",")}% de afinidad`}</span></span>
         </button>`).join("")}
     </div>` : "";
 
@@ -1337,6 +1339,14 @@ function renderizarResultados() {
           </div>
         </article>
 
+        ${res.Directo ? `
+        <div class="medidor medidor-dupe">
+          ${svgFrasco(100, "r" + idx, res.Directo.tipo === "mismo" ? "El mismo perfume" : "Dupe directo")}
+          <div>
+            <div class="cifra">${res.Directo.tipo === "mismo" ? "El mismo" : "Dupe"}</div>
+            <div class="cifra-label">${res.Directo.tipo === "mismo" ? "es el perfume que busca el cliente" : `de ${esc(res.Directo.original)}`}</div>
+          </div>
+        </div>` : `
         <div class="medidor">
           ${svgFrasco(res.Similitud, "r" + idx)}
           <div>
@@ -1345,7 +1355,7 @@ function renderizarResultados() {
             <div class="comunes-label">Coinciden en</div>
             <div class="comunes">${res.Comunes.map(c => `<span>${esc(c.toLowerCase())}</span>`).join("")}</div>
           </div>
-        </div>
+        </div>`}
 
         <article class="lado reco">
           <p class="rotulo">Lo que tienes en ${esc(nombreTienda(tienda))}</p>

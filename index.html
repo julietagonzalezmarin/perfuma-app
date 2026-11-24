@@ -405,6 +405,9 @@
         <option value="📍 Paseo Estado">📍 Paseo Estado</option>
         <option value="📍 Paseo Puente Duomo">📍 Paseo Puente Duomo</option>
         <option value="📍 Paseo Puente Árabe">📍 Paseo Puente Árabe</option>
+        <option value="📍 Local Árabe 407 Apumanque">📍 Local Árabe 407 Apumanque</option>
+        <option value="📍 Local Viña del Mar">📍 Local Viña del Mar</option>
+        <option value="📍 Local Apumanque 315">📍 Local Apumanque 315</option>
       </select>
       <div class="tiendas" id="pildorasTienda" role="group" aria-label="Sucursal activa"></div>
 
@@ -483,7 +486,7 @@
 
   <!-- VISTA ADMIN -->
   <div id="vistaAdmin" class="hidden">
-    <div id="estadoSyncAdmin" class="alert-success">Sesión de administración activa. Lo que guardes llega a las tres sucursales en cerca de un minuto.</div>
+    <div id="estadoSyncAdmin" class="alert-success">Sesión de administración activa. Lo que guardes llega a todas las sucursales en cerca de un minuto.</div>
 
     <section class="panel">
       <div class="panel-cabeza">
@@ -564,7 +567,12 @@
 const MAPA_BODEGAS = {
   "📍 Paseo Estado": "BODEGA PASEO ESTADO",
   "📍 Paseo Puente Duomo": "BODEGA PUENTE DUOMO",
-  "📍 Paseo Puente Árabe": "BODEGA PUENTE ARABE"
+  "📍 Paseo Puente Árabe": "BODEGA PUENTE ARABE",
+  // Las 3 sucursales nuevas: su stock está en estas columnas de Relbase
+  // (las columnas "LOCAL APUMANQUE 407 ARABE" y "LOCAL VIÑA DEL MAR" vienen vacías).
+  "📍 Local Árabe 407 Apumanque": "BODEGA ARABE 407",
+  "📍 Local Viña del Mar": "BODEGA VIÑA",
+  "📍 Local Apumanque 315": "LOCAL APUMANQUE 315 MAYORISTA"
 };
 
 const SINONIMOS_ACORDES = {
@@ -871,8 +879,15 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Cada computador recuerda su tienda: quien abre la página en Viña no tiene que elegirla cada vez.
+const CLAVE_TIENDA = "perfuma_tienda";
+
 function initTiendas() {
   const sel = document.getElementById("selectTienda");
+  try {
+    const guardada = localStorage.getItem(CLAVE_TIENDA);
+    if (guardada && [...sel.options].some(o => o.value === guardada)) sel.value = guardada;
+  } catch (e) {}
   const cont = document.getElementById("pildorasTienda");
   cont.innerHTML = [...sel.options].map(o =>
     `<button type="button" data-v="${esc(o.value)}" aria-pressed="${o.selected}" onclick="elegirTienda(this.dataset.v)">${esc(nombreTienda(o.value))}</button>`
@@ -883,6 +898,7 @@ function elegirTienda(v) {
   const sel = document.getElementById("selectTienda");
   if (sel.value === v) return;
   sel.value = v;
+  try { localStorage.setItem(CLAVE_TIENDA, v); } catch (e) {}
   cambiarTienda();
 }
 
@@ -1247,7 +1263,7 @@ function extraerNotasDeTexto(texto) {
 }
 
 // Lee un perfume de Fragrantica. Primero mira lo ya conocido; si no, se lo pide
-// al servidor de Perfuma, que guarda una caché compartida por las tres tiendas.
+// al servidor de Perfuma, que guarda una caché compartida por todas las tiendas.
 async function extraerFragrantica(url) {
   url = String(url || "").trim();
   const mId = url.match(/-(\d+)\.html/);
@@ -1466,7 +1482,8 @@ async function cargarDescartadosPublicos() {
 
 // ---------- Sugerencias ----------
 function etiquetaCortaTienda(v) {
-  return nombreTienda(v).replace(/^Paseo (Puente )?/, "");
+  // Estado, Duomo, Puente Árabe, Árabe 407, Viña del Mar, Apumanque 315
+  return nombreTienda(v).replace(/^(Paseo|Local) /, "").replace(/ Apumanque$/, "").replace(/^Puente Duomo$/, "Duomo");
 }
 
 function calcularSugerencias() {
@@ -1763,7 +1780,7 @@ async function guardarCambios() {
   actualizarBarraCambios();
   actualizarVistaTienda();
   document.getElementById("msgNuevoPerfume").innerHTML = nAgregar
-    ? `<div class="alert-success">Guardado. ${nAgregar === 1 ? "El perfume nuevo estará" : `Los ${nAgregar} perfumes nuevos estarán`} en el buscador de las tres tiendas en cerca de un minuto.</div>` : "";
+    ? `<div class="alert-success">Guardado. ${nAgregar === 1 ? "El perfume nuevo estará" : `Los ${nAgregar} perfumes nuevos estarán`} en el buscador de todas las tiendas en cerca de un minuto.</div>` : "";
 }
 
 // ---------- Stock ----------
@@ -1831,7 +1848,7 @@ async function subirRelbaseNube() {
     relbaseFilas = filas;
     if (h.fecha) fechaStock = h.fecha;
     inp.value = "";
-    msg.innerHTML = `<div class="alert-success">Stock actualizado. Las tres tiendas lo verán en cerca de un minuto.</div>`;
+    msg.innerHTML = `<div class="alert-success">Stock actualizado. Todas las tiendas lo verán en cerca de un minuto.</div>`;
     actualizarVistaTienda();
   } catch (e) {
     msg.innerHTML = `<div class="alert-warn">No se pudo leer el archivo. Comprueba que sea el Excel (.xlsx) de Relbase.</div>`;

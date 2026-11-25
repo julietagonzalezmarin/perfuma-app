@@ -24,6 +24,8 @@ const ARCHIVO_INSPIRACIONES = "inspiraciones.csv";
 const HORAS_SESION = 12;
 const MAX_STOCK_BASE64 = 8_000_000; // ~6 MB de Excel
 const MAX_FILAS = 500;
+const MAX_FOTO_BASE64 = 2_000_000; // ~1,5 MB de JPG (la página la achica antes de subirla)
+const RE_FOTO = /^(?:https:\/\/[^\s"<>]{8,600}|fotos\/[\w.-]{1,80}\.(?:jpg|jpeg|png|webp))$/i;
 
 const codificador = new TextEncoder();
 
@@ -241,8 +243,8 @@ async function rutaCambios(request, env) {
   const cuerpo = await request.json().catch(() => ({}));
   const lista = x => (Array.isArray(x) ? x.slice(0, MAX_FILAS) : []);
   const agregar = lista(cuerpo.agregar), descartar = lista(cuerpo.descartar), restaurar = lista(cuerpo.restaurar);
-  const inspiraciones = lista(cuerpo.inspiraciones);
-  let agregados = 0;
+  const inspiraciones = lista(cuerpo.inspiraciones), fotos = lista(cuerpo.fotos);
+  let agregados = 0, fotosCambiadas = 0;
 
   if (agregar.length) {
     const cat = await leerArchivo(env, ARCHIVO_CATALOGO);
@@ -267,6 +269,36 @@ async function rutaCambios(request, env) {
       const nombre = lineas.length === 1 ? String(agregar[0].Perfume) : `${lineas.length} perfumes`;
       await escribirArchivo(env, ARCHIVO_CATALOGO, textoABase64(nuevo), cat.sha, `Catálogo: agregado ${nombre}`);
       agregados = lineas.length;
+    }
+  }
+
+  if (fotos.length) {
+    // Foto propia de cada perfume (columna Foto_URL). Vacía = vuelve a usar la del link de Fragrantica.
+    const cat = await leerArchivo(env, ARCHIVO_CATALOGO);
+    const bom = cat.texto.startsWith("\uFEFF") ? "\uFEFF" : "";
+    const filas = csvLeer(cat.texto.replace(/^\uFEFF/, ""));
+    const cab = filas[0] || [];
+    const iSku = cab.indexOf("SKU"), iPerf = cab.indexOf("Perfume"), iFoto = cab.indexOf("Foto_URL");
+    if (!cat.existe || iSku === -1 || iPerf === -1 || iFoto === -1) {
+      return responder({ error: "No se pudo leer catalogo_maestro.csv (falta la columna Foto_URL). No se guardó nada." }, 409);
+    }
+    const norm = t => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const pedidas = new Map();
+    for (const x of fotos) {
+      const v = String((x && x.Foto_URL) || "").trim();
+      if (v && !RE_FOTO.test(v)) return responder({ error: `La foto de ${String(x.Perfume || "").slice(0, 60)} no es un link de imagen válido.` }, 400);
+      pedidas.set(claveSku(x && x.SKU) + "|" + norm(x && x.Perfume), v);
+    }
+    for (const f of filas.slice(1)) {
+      const k = claveSku(f[iSku]) + "|" + norm(f[iPerf]);
+      if (!pedidas.has(k)) continue;
+      while (f.length < cab.length) f.push("");
+      if ((f[iFoto] || "") !== pedidas.get(k)) { f[iFoto] = pedidas.get(k); fotosCambiadas++; }
+    }
+    if (fotosCambiadas) {
+      const csv = bom + filas.map(f => f.map(csvCampo).join(",")).join("\n") + "\n";
+      await escribirArchivo(env, ARCHIVO_CATALOGO, textoABase64(csv), cat.sha,
+        `Fotos: ${fotosCambiadas === 1 ? "foto nueva para 1 perfume" : `fotos nuevas para ${fotosCambiadas} perfumes`}`);
     }
   }
 
@@ -308,7 +340,17 @@ async function rutaCambios(request, env) {
     }
   }
 
-  return responder({ ok: true, agregados });
+  return responder({ ok: true, agregados, fotos: fotosCambiadas });
+}
+
+// Sube una foto sacada en tienda a la carpeta fotos/ del repositorio.
+async function rutaFoto(request, env) {
+  const { sku, contenido } = await request.json().catch(() => ({}));
+  if (typeof contenido !== "string" || !contenido.startsWith("/9j/")) return responder({ error: "La foto debe ser una imagen JPG." }, 400);
+  if (contenido.length > MAX_FOTO_BASE64) return responder({ error: "La foto es demasiado grande." }, 413);
+  const nombre = `fotos/${(claveSku(sku) || "perfume").replace(/[^\w-]/g, "").slice(0, 30)}-${Date.now()}.jpg`;
+  await escribirArchivo(env, nombre, contenido, undefined, `Fotos: foto subida para el SKU ${String(sku || "").slice(0, 30)}`);
+  return responder({ ok: true, ruta: nombre });
 }
 
 async function rutaStock(request, env) {
@@ -349,11 +391,12 @@ export async function manejar(request, env) {
   }
   try {
     if (ruta === "login" && request.method === "POST") return await rutaLogin(request, env);
-    if (!["datos", "cambios", "stock"].includes(ruta)) return responder({ error: "Ruta no encontrada." }, 404);
+    if (!["datos", "cambios", "stock", "foto"].includes(ruta)) return responder({ error: "Ruta no encontrada." }, 404);
     if (!(await sesionValida(env, request))) return responder({ error: "La sesión venció. Vuelve a entrar." }, 401);
     if (ruta === "datos" && request.method === "GET") return await rutaDatos(env);
     if (ruta === "cambios" && request.method === "POST") return await rutaCambios(request, env);
     if (ruta === "stock" && request.method === "POST") return await rutaStock(request, env);
+    if (ruta === "foto" && request.method === "POST") return await rutaFoto(request, env);
     return responder({ error: "Método no permitido." }, 405);
   } catch (e) {
     if (e instanceof ErrorGitHub) return responder({ error: e.message }, 502);

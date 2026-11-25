@@ -494,6 +494,38 @@
     .sug .cero { color: #B9AEC0; }
     .sug .acc { white-space: nowrap; text-align: right; }
     .sug tr.en-curso { background: #F6EFF9; }
+    /* Fotos */
+    .lista-fotos { max-height: 640px; overflow: auto; border: 1px solid var(--linea); border-radius: var(--r-md); }
+    .ficha-foto { display: grid; grid-template-columns: 112px 112px 1fr; grid-template-areas: "ahora sug info"; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #EFEAF1; align-items: start; }
+    .ficha-foto .ff-info { grid-area: info; }
+    .ficha-foto .foto-caja { grid-area: ahora; }
+    .ficha-foto .foto-caja.sugerida { grid-area: sug; }
+    .ficha-foto:last-child { border-bottom: 0; }
+    .ficha-foto .nombre { font-weight: 600; font-size: 14px; }
+    .ficha-foto .meta { font-size: 12px; color: var(--humo); }
+    .ff-nota { margin: 6px 0 0; font-size: 13px; color: var(--tinta); max-width: 60ch; }
+    .ff-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .ff-acciones label.btn-mini { display: inline-block; }
+    .ff-acciones label.btn-mini:focus-within { outline: 2px solid var(--violeta); }
+    .ff-link { width: 100%; max-width: 460px; margin-top: 8px; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid #DCD3E1; border-radius: 6px; background: #fff; }
+    .ff-link:focus { outline: 0; border-color: var(--violeta); box-shadow: 0 0 0 3px var(--violeta-suave); }
+    .ff-msg { font-size: 12px; color: var(--humo); margin-top: 4px; min-height: 0; }
+    .ff-msg.mal { color: #A2352B; }
+    .foto-caja { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+    .foto-caja img { width: 112px; height: 140px; object-fit: contain; background: #fff; border: 1px solid var(--linea); border-radius: 8px; }
+    .foto-caja.sugerida img { border: 2px solid var(--violeta); }
+    .foto-caja figcaption { font-size: 11px; color: var(--humo); text-align: center; }
+    .foto-caja.rota img { visibility: hidden; }
+    .foto-caja.rota figcaption::after { content: " (no carga)"; color: #A2352B; }
+    .chip-foto { display: inline-block; vertical-align: 2px; margin-left: 6px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+    .chip-foto.rev { background: #FBEFD9; color: #8A5A12; }
+    .chip-foto.conf { background: #E8EEF8; color: #2F4F86; }
+    .chip-foto.ok { background: #E3F2E6; color: #2E6B3A; }
+    .chip-foto.pend { background: var(--violeta-suave); color: var(--violeta); }
+    .mas-fotos { padding: 12px; text-align: center; }
+    @media (max-width: 640px) {
+      .ficha-foto { grid-template-columns: 112px 112px 1fr; grid-template-areas: "ahora sug ." "info info info"; }
+    }
     .btn-mini { border: 1px solid var(--linea); background: #fff; color: var(--tinta); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
     .btn-mini:hover { border-color: #C9B5D3; }
     .btn-mini.si { background: var(--violeta); border-color: var(--violeta); color: #fff; }
@@ -704,6 +736,7 @@
         <div class="campo"><label for="admGen">Género <span class="ayuda">(se detecta con el link)</span></label><input type="text" id="admGen" placeholder="Se completa solo" readonly /></div>
         <div class="campo"><label for="admPrecio">Precio en tienda</label><input type="text" id="admPrecio" value="$29.990" /></div>
         <div class="campo ancho"><label for="admInspirado">Inspirado en <span class="ayuda">(opcional: el link de Fragrantica del perfume original del que es dupe)</span></label><input type="text" id="admInspirado" placeholder="https://www.fragrantica.es/perfume/Xerjoff/Erba-Pura-55157.html" /></div>
+        <div class="campo ancho"><label for="admFotoNueva">Foto <span class="ayuda">(opcional: link de la imagen del frasco, si el link de Fragrantica es de otro perfume parecido)</span></label><input type="text" id="admFotoNueva" placeholder="https://… (clic derecho sobre la foto → Copiar dirección de la imagen)" /></div>
       </div>
       <div class="fila-botones">
         <button class="btn btn-sec" id="btnAutoFrag" onclick="autocompletarDesdeFragranticaAdmin()">Completar desde el link</button>
@@ -724,6 +757,20 @@
         <input type="search" id="filtroInspiraciones" placeholder="Buscar por nombre, marca, SKU u original" oninput="renderInspiraciones()" />
       </div>
       <div class="table-scroll alto" id="tablaInspiraciones"></div>
+    </section>
+
+    <section class="panel" id="panelFotos">
+      <h3>Fotos de los perfumes</h3>
+      <p class="desc">Cuando un perfume usa el link de Fragrantica de otro parecido, la foto que se ve es la del otro. Aquí le pones su propia foto: usa la sugerida, pega el link de otra imagen o sube una foto del frasco sacada en tienda. Las notas siguen saliendo del link.</p>
+      <div class="barra-sugerencias">
+        <div class="seg-claro" role="radiogroup" aria-label="Qué perfumes ver">
+          <label><input type="radio" name="vistaFotos" value="revisar" checked onchange="cambiarVistaFotos(this.value)"><span id="lblFotosRevisar">Por revisar</span></label>
+          <label><input type="radio" name="vistaFotos" value="todos" onchange="cambiarVistaFotos(this.value)"><span id="lblFotosTodos">Todos</span></label>
+        </div>
+        <label class="sr-only" for="filtroFotos">Buscar perfume</label>
+        <input type="search" id="filtroFotos" placeholder="Buscar por nombre, marca o SKU" oninput="limiteFotos = 40; renderFotos()" />
+      </div>
+      <div class="lista-fotos" id="listaFotos"></div>
     </section>
 
     <section class="panel">
@@ -1379,10 +1426,15 @@ function irARecomendacion(i) {
   renderizarResultados();
 }
 
+// Foto del perfume: si tiene una foto propia (columna Foto_URL) se usa esa;
+// si no, la de su link de Fragrantica. Así un perfume que usa el link de otro
+// parecido (para tomar sus notas) puede mostrar su propio frasco.
 function fotoDe(fila) {
+  const propia = String(fila.Foto_URL || "").trim();
+  if (propia) return (typeof fotosLocales !== "undefined" && fotosLocales[propia]) || propia;
   const mId = String(fila.URL_Fragrantica || "").match(/-(\d+)\.html/);
   return mId ? `https://fimgs.net/mdimg/perfume/375x500.${mId[1]}.jpg`
-             : (fila.Foto_URL || `https://tse2.mm.bing.net/th?q=${encodeURIComponent(fila.Marca + ' ' + fila.Perfume + ' perfume')}&w=350&h=420&c=7`);
+             : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(fila.Marca + ' ' + fila.Perfume + ' perfume')}&w=350&h=420&c=7`;
 }
 
 function etiquetaGenero(g) {
@@ -2315,6 +2367,7 @@ async function cargarDatosAdmin() {
   }
   actualizarVistaTienda();
   renderInspiraciones();
+  renderFotos();
 }
 
 async function cargarDescartadosPublicos() {
@@ -2374,6 +2427,7 @@ function nombreParaCatalogo(producto) {
 function actualizarPanelesAdmin() {
   renderSugerencias();
   renderInspiraciones();
+  renderFotos();
   document.getElementById("tituloInventarioTotal").innerText = `Catálogo completo (${catalogoBruto.length} perfumes)`;
   const catHtml = catalogoBruto.map(c =>
     `<tr><td>${esc(c.SKU)}</td><td>${esc(c.Perfume)}</td><td>${esc(c.Marca)}</td><td>${esc(c.Categoria)}</td><td>${esc(etiquetaGenero(c.Genero))}</td><td>${esc(c.Precio)}</td><td>${esc(c.Acordes)}</td></tr>`
@@ -2491,7 +2545,7 @@ function prepararAgregar(sku) {
 function limpiarFormularioAgregar() {
   sugerenciaEnCurso = null;
   notasDetectadas = "";
-  ["admUrl", "admNombre", "admMarca", "admAcordes", "admGen", "admSku", "admInspirado"].forEach(id => document.getElementById(id).value = "");
+  ["admUrl", "admNombre", "admMarca", "admAcordes", "admGen", "admSku", "admInspirado", "admFotoNueva"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("ayudaSugerencia").classList.add("hidden");
 }
 
@@ -2561,13 +2615,18 @@ async function guardarNuevoPerfumeAdmin() {
       msg.innerHTML = `<div class="alert-warn">${esc(inspirado.error)}</div>`;
       return;
     }
+    const fotoPropia = validarLinkFoto(document.getElementById("admFotoNueva").value);
+    if (fotoPropia.error) {
+      msg.innerHTML = `<div class="alert-warn">Foto: ${esc(fotoPropia.error)}</div>`;
+      return;
+    }
     if (inspirado.texto) fijarInspiracion(sku, nombre, inspirado.texto);
 
     const mId = url.match(/-(\d+)\.html/);
     porAgregar.push({
       SKU: sku, Perfume: nombre, Marca: marca, Categoria: cat,
       Genero: gen || "Para Hombres y Mujeres", Precio: precio, Acordes: acordes, Notas: notasDetectadas,
-      Foto_URL: mId ? `https://fimgs.net/mdimg/perfume/375x500.${mId[1]}.jpg` : "",
+      Foto_URL: fotoPropia.valor || (mId ? `https://fimgs.net/mdimg/perfume/375x500.${mId[1]}.jpg` : ""),
       URL_Fragrantica: url, Stock: "Si"
     });
     limpiarFormularioAgregar();
@@ -2592,7 +2651,7 @@ function cambiosDescartados() {
 
 function hayCambios() {
   const c = cambiosDescartados();
-  return porAgregar.length + c.descartar.length + c.restaurar.length + cambiosInspiraciones().length > 0;
+  return porAgregar.length + c.descartar.length + c.restaurar.length + cambiosInspiraciones().length + fotosPendientes.size > 0;
 }
 
 function actualizarBarraCambios(mensaje, mal) {
@@ -2603,6 +2662,7 @@ function actualizarBarraCambios(mensaje, mal) {
   n(c.descartar.length, "marcado como “No agregar”", "marcados como “No agregar”");
   n(c.restaurar.length, "vuelve a sugerirse", "vuelven a sugerirse");
   n(cambiosInspiraciones().length, "dupe por guardar", "dupes por guardar");
+  n(fotosPendientes.size, "foto por guardar", "fotos por guardar");
   const barra = document.getElementById("barraCambios");
   const msg = document.getElementById("msgCambios");
   msg.textContent = mensaje || (partes.length ? "Sin guardar todavía." : "");
@@ -2616,8 +2676,10 @@ function deshacerCambios() {
   descartados = descartadosGuardados.slice();
   inspiraciones = inspiracionesGuardadas.map(f => ({ ...f }));
   reconstruirIndiceInspiraciones();
+  fotosPendientes = new Map();
   renderInspiraciones();
   renderSugerencias();
+  renderFotos();
   actualizarBarraCambios();
 }
 
@@ -2627,19 +2689,21 @@ async function guardarCambios() {
   const nAgregar = porAgregar.length;
   btn.disabled = true;
   actualizarBarraCambios("Guardando…");
-  const r = await api("cambios", { agregar: porAgregar, descartar: c.descartar, restaurar: c.restaurar, inspiraciones: cambiosInspiraciones() });
+  const r = await api("cambios", { agregar: porAgregar, descartar: c.descartar, restaurar: c.restaurar, inspiraciones: cambiosInspiraciones(), fotos: [...fotosPendientes.values()] });
   btn.disabled = false;
   if (!r.ok) {
     if (adminAutenticado) actualizarBarraCambios(`No se guardó: ${r.error}`, true);
     return;
   }
-  catalogoBruto = [...catalogoBruto, ...porAgregar];
+  catalogoBruto = [...catalogoBruto.map(conFotoPendiente), ...porAgregar];
   porAgregar = [];
+  fotosPendientes = new Map();
   descartadosGuardados = descartados.slice();
   inspiracionesGuardadas = inspiraciones.map(f => ({ ...f }));
   actualizarBarraCambios();
   actualizarVistaTienda();
   renderInspiraciones();
+  renderFotos();
   document.getElementById("msgNuevoPerfume").innerHTML = nAgregar
     ? `<div class="alert-success">Guardado. ${nAgregar === 1 ? "El perfume nuevo estará" : `Los ${nAgregar} perfumes nuevos estarán`} en el buscador de todas las tiendas en cerca de un minuto.</div>` : "";
 }
@@ -2822,8 +2886,233 @@ async function subirRelbaseNube() {
 
 document.getElementById("tablaRadarContainer").addEventListener("click", clicSugerencias);
 document.getElementById("tablaInspiraciones").addEventListener("change", cambioInspiracion);
+document.getElementById("listaFotos").addEventListener("click", clicFotos);
+document.getElementById("listaFotos").addEventListener("keydown", teclaFotos);
+document.getElementById("listaFotos").addEventListener("change", subirFotoFicha);
 window.addEventListener("beforeunload", ev => { if (hayCambios()) { ev.preventDefault(); ev.returnValue = ""; } });
 cargarDescartadosPublicos();
+
+// ---------- Fotos de los perfumes ----------
+// Algunos perfumes usan el link de Fragrantica de otro parecido (para tomar sus
+// notas) y por eso mostraban la foto de ese otro. Aquí se les pone su propia foto
+// (columna Foto_URL del catálogo). Vacía = vuelve a la foto del link.
+const EO = "https://cdn.shopify.com/s/files/1/0798/6898/5693/files/";
+const AP = "https://cdn.shopify.com/s/files/1/0815/8848/6483/files/";
+const FB = "https://cdn.shopify.com/s/files/1/0288/5228/9622/files/";
+// Revisión del 25-11-2026: perfumes cuya foto era la de otro perfume.
+// grupo "a": encontré la foto correcta; "b": no hay foto en internet; "c": hay que confirmar.
+const REVISION_FOTOS = [
+  ["6291108321003", "a", "Pegasus de Parfums de Marly", FB + "IMG-1925.jpg"],
+  ["6291108327609", "a", "Sedley de Parfums de Marly", FB + "3F19603C-7C36-4064-AD39-6287DC5B061E.jpg"],
+  ["6298042001817", "a", "Eros Najim de Versace", AP + "perfume-con-notas-de-caramelo-mandarina-italiana-cardamomo-oud-incienso-pachul-y-vetiver.png"],
+  ["6291108326305", "a", "1 Million de Rabanne", EO + "la-uno-million-le-parfum-100ml-eau-de-parfum-fragrance-world-emirates-oud-4.jpg"],
+  ["6290360377438", "a", "La Belle Le Parfum de Jean Paul Gaultier", AP + "Anadirunsubtitulo_2.png"],
+  ["6298042003644", "a", "Urban Man Elixir de Fragrance World", AP + "urban-man-absolute-elixir-est-ndar.png"],
+  ["6290360375571", "a", "Wanted by Night de Azzaro", EO + "Azzure-Hunted-By-Night-Perfume-100ml-EDP-Fragrance-World-283357116.jpg"],
+  ["6298042003620", "a", "Forever Wanted Elixir de Azzaro", AP + "azzure-hunted-elixir-est-ndar-v2.png"],
+  ["6291108320181", "a", "Olympéa de Rabanne", EO + "ophylia-perfume-100ml-edp-fragrance-world-emirates-oud-1-103838172.jpg"],
+  ["6290360370743", "a", "Good Girl Supreme de Carolina Herrera", AP + "supreme-chic-girl-sticla-cu-ingrediente.png"],
+  ["6290360379241", "a", "My Way de Armani", EO + "ur-way-perfume-100ml-edp-fragrance-world-emirates-oud.jpg"],
+  ["6290360379609", "a", "Sì Intense de Armani", EO + "iS-Intense-Perfume-75ml-EDP-Fragrance-World-171953340.jpg"],
+  ["6290360379616", "a", "Sì Passione de Armani", EO + "iS-L_Amour-Perfume-75ml-EDP-Fragrance-World-168846772.jpg"],
+  ["6290360371153", "a", "Dylan Turquoise de Versace", EO + "versus-diamond-bleu-perfume-100ml-edp-fragrance-world-emirates-oud-1-103833158.jpg"],
+  ["6291108326527", "a", "Dylan Blue pour Femme de Versace", EO + "vesrus-ocean-blue-perfume-100ml-edp-fragrance-world-emirates-oud-2-103826227.jpg"],
+  ["6291100130498", "a", "Amber Oud Gold 999.9 Dubai", "https://fimgs.net/mdimg/perfume/375x500.51816.jpg"],
+  ["6298042000315", "a", "Born in Roma Intense de Valentino", EO + "Valentia-Rome-Intense-100ml-EDP-Fragrance-World-179810354.jpg"],
+  ["6290360377414", "a", "Le Beau de Jean Paul Gaultier", EO + "Urban-Man-Amaze-Perfume-90ml-EDP-Fragrance-World-171912543.png"],
+  ["6290360373768", "a", "Belle Celine Beauty de Fragrance World", FB + "4E4AFE0C-AB3C-4DFE-9E97-D0BDA8227B45.jpg"],
+  ["5055810029951", "a", "Khamrah de Lattafa", FB + "IMG-9288.jpg"],
+  ["5055810029746", "a", "Delilah de Maison Alhambra", AP + "15995.jpg"],
+  ["6298042000865", "a", "Scandal By Night de Jean Paul Gaultier", EO + "scandant-by-night-perfume-100ml-edp-fragrance-world-emirates-oud-2.jpg"],
+  ["6290360378862", "a", "Glacier Ultra de Maison Alhambra", EO + "Urban-Man-Ultra-Perfume-90ml-EDP-Fragrance-World-175282663.jpg"],
+  ["6290360373300", "a", "Red Tobacco de Mancera", EO + "montera-rouge-tobacco-100ml-edp-fragrance-world-emirates-oud-1.jpg"],
+  ["6291108326503", "a", "La Voie de Maison Alhambra", EO + "ur-way-perfume-100ml-edp-fragrance-world-emirates-oud.jpg"],
+  ["6291108735954", "a", "La Vivacité de Maison Alhambra", EO + "La-Vivacite-_La-Vita-Bella_-Intensa-Perfume-100ml-EDP-Maison-Alhambra-175527061.jpg"],
+  ["6291108735916", "a", "Jorge di Profondo de Maison Alhambra", EO + "Jorge-di-Profumo-Deep-Blue-Perfume-100ml-EDP-Maison-Alhambra-175814896.jpg"],
+  ["7453048904077", "a", "Risala Pure Ombre", ""],
+  ["6290360371108", "b", "Olympéa Blossom de Rabanne", ""],
+  ["8901489307210", "b", "Jorge di Profumo Aqua de Maison Alhambra", ""],
+  ["8901489307197", "b", "Donna Born in Roma de Valentino", ""],
+  ["8901489307166", "b", "Chance de Chanel", ""],
+  ["8901489307111", "b", "Yara de Lattafa", ""],
+  ["8901489307128", "b", "Asad de Lattafa", ""],
+  ["6291107459370", "c", "Bright Crystal de Versace", EO + "Jubilant-Rose-Perfume-100ml-EDP-Maison-Alhambra-176626492.jpg",
+    "Relbase lo llama “Versencia Crystal”, pero el catálogo dice Jubilant Rose. Confirma cuál es el frasco de este SKU; la sugerida es la de Jubilant Rose."],
+  ["6298042001596", "c", "John Gustav Homme Amaze de Fragrance World", EO + "Urban-Man-Amaze-Perfume-90ml-EDP-Fragrance-World-171912543.png",
+    "La sugerida es la del frasco de 90 ml. Úsala si el de 50 ml es igual."],
+  ["6290362340812", "c", "Encode de Maison Alhambra", AP + "AntonioBanderasMediterraneo_18_512x512_5a3d4e87-8778-4a0e-ba4d-e1def935a132.webp",
+    "La foto sugerida no es segura: mírala antes de usarla."]
+].map(([sku, grupo, muestra, sugerida, nota]) => ({ sku, grupo, muestra, sugerida, nota }));
+
+let fotosPendientes = new Map();   // clave del perfume -> { SKU, Perfume, Foto_URL }
+let fotosLocales = {};             // ruta fotos/… recién subida -> imagen para verla antes de publicarse
+let vistaFotos = "revisar";
+let limiteFotos = 40;
+
+function fotoGuardada(f) { return String(f.Foto_URL || "").trim(); }
+
+function fotoDelLink(f) {
+  const m = String(f.URL_Fragrantica || "").match(/-(\d+)\.html/);
+  return m ? `https://fimgs.net/mdimg/perfume/375x500.${m[1]}.jpg` : "";
+}
+
+// Fila con la foto que tendrá después de guardar.
+function conFotoPendiente(f) {
+  const p = fotosPendientes.get(claveFilaCatalogo(f.SKU, f.Perfume));
+  return p ? { ...f, Foto_URL: p.Foto_URL } : f;
+}
+
+// ¿Tiene foto propia, distinta de la del link?
+function tieneFotoPropia(f) {
+  const v = fotoGuardada(f);
+  return !!v && v !== fotoDelLink(f);
+}
+
+function fijarFoto(sku, perfume, valor) {
+  const k = claveFilaCatalogo(sku, perfume);
+  const fila = catalogoBruto.find(f => claveFilaCatalogo(f.SKU, f.Perfume) === k);
+  const nueva = porAgregar.find(f => claveFilaCatalogo(f.SKU, f.Perfume) === k);
+  if (nueva) { nueva.Foto_URL = valor; }
+  else if (fila && fotoGuardada(fila) === valor) fotosPendientes.delete(k);
+  else if (fila) fotosPendientes.set(k, { SKU: fila.SKU, Perfume: fila.Perfume, Foto_URL: valor });
+  renderFotos();
+  actualizarBarraCambios();
+}
+
+function validarLinkFoto(texto) {
+  const v = String(texto || "").trim();
+  if (!v) return { valor: "" };
+  if (!/^https:\/\/\S{8,600}$/i.test(v) || /[\s"<>]/.test(v)) return { error: "Pega un link que empiece con https:// (clic derecho sobre la imagen → Copiar dirección de la imagen)." };
+  if (/fragrantica\.[a-z.]+\/perfume\//i.test(v)) return { error: "Ese es el link de la página de Fragrantica, no el de la imagen. Haz clic derecho sobre la foto → Copiar dirección de la imagen." };
+  return { valor: v };
+}
+
+function cambiarVistaFotos(v) { vistaFotos = v; limiteFotos = 40; renderFotos(); }
+
+function filaFotoHtml(f, rev) {
+  const k = claveFilaCatalogo(f.SKU, f.Perfume);
+  const ahora = conFotoPendiente(f);
+  const pendiente = fotosPendientes.has(k);
+  const propia = tieneFotoPropia(ahora);
+  const onerr = "this.onerror=null;this.closest('.foto-caja').classList.add('rota')";
+  const sug = rev && rev.sugerida && rev.sugerida !== fotoGuardada(ahora) ? rev.sugerida : "";
+  let estado = "";
+  if (pendiente) estado = `<span class="chip-foto pend">Sin guardar</span>`;
+  else if (rev && propia) estado = `<span class="chip-foto ok">Resuelto</span>`;
+  else if (rev && rev.grupo === "c") estado = `<span class="chip-foto conf">Por confirmar</span>`;
+  else if (rev) estado = `<span class="chip-foto rev">Por revisar</span>`;
+  let nota = "";
+  if (rev && !propia) {
+    nota = rev.grupo === "b"
+      ? `Muestra la foto de ${esc(rev.muestra)}. No encontré su foto en internet: sube una foto del frasco sacada en tienda.`
+      : `Muestra la foto de ${esc(rev.muestra)}.${rev.nota ? " " + esc(rev.nota) : ""}`;
+  } else if (rev && rev.nota && rev.grupo === "c") nota = esc(rev.nota);
+  const datos = `data-sku="${esc(f.SKU)}" data-perfume="${esc(f.Perfume)}"`;
+  return `<div class="ficha-foto" ${datos}>
+    <div class="ff-info">
+      <div class="nombre">${esc(titulo(f.Perfume))} ${estado}</div>
+      <div class="meta">${esc(titulo(f.Marca))}, SKU ${esc(f.SKU)}</div>
+      ${nota ? `<p class="ff-nota">${nota}</p>` : ""}
+      <div class="ff-acciones">
+        ${sug ? `<button class="btn-mini si" data-accion="sugerida" data-valor="${esc(sug)}">Usar la sugerida</button>` : ""}
+        <label class="btn-mini">Subir foto<input type="file" accept="image/*" data-accion="subir" hidden></label>
+        ${propia ? `<button class="btn-mini" data-accion="link">Volver a la del link</button>` : ""}
+      </div>
+      <input type="text" class="ff-link" data-accion="pegar" placeholder="O pega aquí el link de otra imagen y pulsa Enter" aria-label="Link de imagen para ${esc(titulo(f.Perfume))}">
+      <div class="ff-msg" role="status"></div>
+    </div>
+    <figure class="foto-caja"><img loading="lazy" src="${esc(fotoDe(ahora))}" alt="" onerror="${onerr}"><figcaption>${propia ? "Foto propia" : "Foto del link"}${pendiente ? " (nueva)" : ""}</figcaption></figure>
+    ${sug ? `<figure class="foto-caja sugerida"><img loading="lazy" src="${esc(sug)}" alt="" onerror="${onerr}"><figcaption>Sugerida</figcaption></figure>` : ""}
+  </div>`;
+}
+
+function renderFotos() {
+  const cont = document.getElementById("listaFotos");
+  if (!cont || !adminAutenticado) return;
+  const filas = catalogoBruto.filter(f => f.Perfume);
+  const porSku = new Map(filas.map(f => [limpiarSku(f.SKU), f]));
+  const revisar = REVISION_FOTOS.map(r => ({ r, f: porSku.get(limpiarSku(r.sku)) })).filter(x => x.f);
+  const resueltos = revisar.filter(x => tieneFotoPropia(conFotoPendiente(x.f))).length;
+  document.getElementById("lblFotosRevisar").textContent = `Por revisar (${revisar.length - resueltos} de ${revisar.length})`;
+  document.getElementById("lblFotosTodos").textContent = `Todos (${filas.length})`;
+  const q = quitarTildes(document.getElementById("filtroFotos").value);
+  const revPorSku = new Map(REVISION_FOTOS.map(r => [limpiarSku(r.sku), r]));
+  let lista = vistaFotos === "revisar"
+    ? revisar.sort((a, b) => tieneFotoPropia(conFotoPendiente(a.f)) - tieneFotoPropia(conFotoPendiente(b.f)) || a.r.grupo.localeCompare(b.r.grupo))
+    : filas.slice().sort((a, b) => String(a.Perfume).localeCompare(String(b.Perfume))).map(f => ({ f, r: revPorSku.get(limpiarSku(f.SKU)) }));
+  if (q) lista = lista.filter(x => quitarTildes(`${x.f.Perfume} ${x.f.Marca} ${x.f.SKU}`).includes(q));
+  if (!lista.length) { cont.innerHTML = `<div class="vacio-tabla">Ningún perfume coincide con esa búsqueda.</div>`; return; }
+  const visibles = lista.slice(0, limiteFotos);
+  cont.innerHTML = visibles.map(x => filaFotoHtml(x.f, x.r)).join("") +
+    (lista.length > visibles.length ? `<div class="mas-fotos"><button class="btn-mini" onclick="limiteFotos += 40; renderFotos()">Ver ${Math.min(40, lista.length - visibles.length)} más (quedan ${lista.length - visibles.length})</button></div>` : "");
+}
+
+function mensajeFicha(ficha, texto, mal) {
+  const m = ficha.querySelector(".ff-msg");
+  m.textContent = texto;
+  m.classList.toggle("mal", !!mal);
+}
+
+function clicFotos(ev) {
+  const b = ev.target.closest("button[data-accion]");
+  if (!b) return;
+  const ficha = b.closest(".ficha-foto");
+  if (b.dataset.accion === "sugerida") fijarFoto(ficha.dataset.sku, ficha.dataset.perfume, b.dataset.valor);
+  if (b.dataset.accion === "link") fijarFoto(ficha.dataset.sku, ficha.dataset.perfume, "");
+}
+
+function teclaFotos(ev) {
+  const inp = ev.target.closest("input[data-accion=pegar]");
+  if (!inp || ev.key !== "Enter") return;
+  ev.preventDefault();
+  const ficha = inp.closest(".ficha-foto");
+  const r = validarLinkFoto(inp.value);
+  if (r.error) { mensajeFicha(ficha, r.error, true); return; }
+  if (!r.valor) return;
+  // Se prueba que la imagen cargue antes de aceptarla.
+  const img = new Image();
+  mensajeFicha(ficha, "Revisando la imagen…");
+  img.onload = () => fijarFoto(ficha.dataset.sku, ficha.dataset.perfume, r.valor);
+  img.onerror = () => mensajeFicha(ficha, "Esa dirección no abre una imagen. Copia la dirección de la imagen, no la de la página.", true);
+  img.src = r.valor;
+}
+
+// Achica la foto a 600 px de alto como máximo y la deja en JPG.
+function achicarFoto(archivo) {
+  return new Promise((ok, mal) => {
+    const url = URL.createObjectURL(archivo);
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, 600 / img.naturalHeight, 600 / img.naturalWidth);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * escala);
+      c.height = Math.round(img.naturalHeight * escala);
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok(c.toDataURL("image/jpeg", 0.86));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); mal(new Error("No pude abrir ese archivo como imagen.")); };
+    img.src = url;
+  });
+}
+
+async function subirFotoFicha(ev) {
+  const inp = ev.target.closest("input[data-accion=subir]");
+  if (!inp || !inp.files || !inp.files[0]) return;
+  const ficha = inp.closest(".ficha-foto");
+  const archivo = inp.files[0];
+  inp.value = "";
+  let dataUrl;
+  try { dataUrl = await achicarFoto(archivo); }
+  catch (e) { mensajeFicha(ficha, e.message, true); return; }
+  mensajeFicha(ficha, "Subiendo la foto…");
+  const r = await api("foto", { sku: ficha.dataset.sku, contenido: dataUrl.split(",")[1] });
+  if (!r.ok) { mensajeFicha(ficha, `No se subió: ${r.error}`, true); return; }
+  fotosLocales[r.ruta] = dataUrl;
+  fijarFoto(ficha.dataset.sku, ficha.dataset.perfume, r.ruta);
+}
 
 // ===== Arranque =====
 initTiendas();

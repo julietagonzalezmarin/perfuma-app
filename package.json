@@ -2,7 +2,7 @@
   "name": "perfuma-app",
   "private": true,
   "scripts": {
-    "build": "rm -rf public && mkdir -p public && cp index.html catalogo_maestro.csv relbase_actual.xlsx descartados.csv public/ && (cp inspiraciones.csv public/ 2>/dev/null || true)",
+    "build": "rm -rf public && mkdir -p public && cp index.html catalogo_maestro.csv relbase_actual.xlsx descartados.csv public/ && (cp inspiraciones.csv public/ 2>/dev/null || true) && (cp -r fotos public/ 2>/dev/null || true)",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

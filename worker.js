@@ -10,8 +10,9 @@
 // Rutas:
 //   POST /api/login    { password }                        -> { sesion }
 //   GET  /api/datos                                        -> { catalogo, descartados, inspiraciones }  (texto CSV al día)
-//   POST /api/cambios  { agregar, descartar, restaurar, inspiraciones }
-//                      -> agrega perfumes, actualiza descartados y registra de qué original es dupe cada perfume
+//   POST /api/cambios  { agregar, descartar, restaurar, inspiraciones, fotos, editar }
+//                      -> agrega y corrige perfumes, cambia fotos, actualiza descartados y dupes
+//   POST /api/foto     { sku, contenido }  (JPG en base64; devuelve la ruta fotos/…)
 //   POST /api/stock    { contenido }  (xlsx en base64)     -> reemplaza relbase_actual.xlsx
 //
 // Todo lo que no empiece con /api/ lo sirve Cloudflare como archivo estático
@@ -25,6 +26,7 @@ const HORAS_SESION = 12;
 const MAX_STOCK_BASE64 = 8_000_000; // ~6 MB de Excel
 const MAX_FILAS = 500;
 const MAX_FOTO_BASE64 = 2_000_000; // ~1,5 MB de JPG (la página la achica antes de subirla)
+const CAMPOS_EDITABLES = ["SKU", "Perfume", "Marca", "Categoria", "Genero", "Precio", "Acordes", "Notas", "Foto_URL", "URL_Fragrantica"];
 const RE_FOTO = /^(?:https:\/\/[^\s"<>]{8,600}|fotos\/[\w.-]{1,80}\.(?:jpg|jpeg|png|webp))$/i;
 
 const codificador = new TextEncoder();
@@ -243,8 +245,8 @@ async function rutaCambios(request, env) {
   const cuerpo = await request.json().catch(() => ({}));
   const lista = x => (Array.isArray(x) ? x.slice(0, MAX_FILAS) : []);
   const agregar = lista(cuerpo.agregar), descartar = lista(cuerpo.descartar), restaurar = lista(cuerpo.restaurar);
-  const inspiraciones = lista(cuerpo.inspiraciones), fotos = lista(cuerpo.fotos);
-  let agregados = 0, fotosCambiadas = 0;
+  const inspiraciones = lista(cuerpo.inspiraciones), fotos = lista(cuerpo.fotos), editar = lista(cuerpo.editar);
+  let agregados = 0, fotosCambiadas = 0, editados = 0;
 
   if (agregar.length) {
     const cat = await leerArchivo(env, ARCHIVO_CATALOGO);
@@ -302,6 +304,66 @@ async function rutaCambios(request, env) {
     }
   }
 
+  if (editar.length) {
+    // Corrige perfumes que ya están en el catálogo. Cada pedido trae el SKU y el
+    // nombre que tenía (para encontrarlo) y los campos nuevos.
+    const cat = await leerArchivo(env, ARCHIVO_CATALOGO);
+    const bom = cat.texto.startsWith("\uFEFF") ? "\uFEFF" : "";
+    const filas = csvLeer(cat.texto.replace(/^\uFEFF/, ""));
+    const cab = filas[0] || [];
+    const iSku = cab.indexOf("SKU"), iPerf = cab.indexOf("Perfume");
+    if (!cat.existe || iSku === -1 || iPerf === -1) {
+      return responder({ error: "No se pudo leer catalogo_maestro.csv en el repositorio. No se guardó nada." }, 409);
+    }
+    const norm = t => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const clave = (sku, perfume) => claveSku(sku) + "|" + norm(perfume);
+    const renombres = new Map();   // clave vieja -> [SKU nuevo, Perfume nuevo]
+    for (const x of editar) {
+      const campos = (x && typeof x.campos === "object" && x.campos) || {};
+      const fila = filas.slice(1).find(f => clave(f[iSku], f[iPerf]) === clave(x.SKU, x.Perfume));
+      if (!fila) return responder({ error: `“${String(x && x.Perfume || "").slice(0, 60)}” ya no está en el catálogo con ese nombre. Recarga la página e inténtalo de nuevo. No se guardó nada.` }, 409);
+      while (fila.length < cab.length) fila.push("");
+      const nuevo = fila.slice();
+      for (const [col, valor] of Object.entries(campos)) {
+        if (!CAMPOS_EDITABLES.includes(col)) continue;
+        const i = cab.indexOf(col);
+        if (i === -1) continue;
+        nuevo[i] = String(valor ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 2000);
+      }
+      const v = c => nuevo[cab.indexOf(c)] ?? "";
+      if (!v("Perfume") || !claveSku(v("SKU"))) return responder({ error: "El nombre y el SKU no pueden quedar vacíos. No se guardó nada." }, 400);
+      if (v("Foto_URL") && !RE_FOTO.test(v("Foto_URL"))) return responder({ error: "La foto no es un link de imagen válido. No se guardó nada." }, 400);
+      if (v("URL_Fragrantica") && !/^https:\/\/(www\.)?fragrantica\.[a-z.]+\/\S+$/i.test(v("URL_Fragrantica"))) return responder({ error: "El link de Fragrantica no es válido. No se guardó nada." }, 400);
+      const kNueva = clave(v("SKU"), v("Perfume")), kVieja = clave(fila[iSku], fila[iPerf]);
+      if (kNueva !== kVieja && filas.slice(1).some(f => f !== fila && clave(f[iSku], f[iPerf]) === kNueva)) {
+        return responder({ error: `Ya hay otro perfume con el SKU ${v("SKU")} y el nombre ${v("Perfume")}. No se guardó nada.` }, 400);
+      }
+      if (kNueva !== kVieja) renombres.set(kVieja, [v("SKU"), v("Perfume")]);
+      if (nuevo.some((c, i) => c !== fila[i])) { fila.splice(0, fila.length, ...nuevo); editados++; }
+    }
+    if (editados) {
+      const csv = bom + filas.map(f => f.map(csvCampo).join(",")).join("\n") + "\n";
+      const quien = editados === 1 ? String(editar[0].campos?.Perfume || editar[0].Perfume) : `${editados} perfumes`;
+      await escribirArchivo(env, ARCHIVO_CATALOGO, textoABase64(csv), cat.sha, `Catálogo: editado ${quien}`);
+    }
+    if (renombres.size) {
+      // El original de cada dupe está guardado con el SKU y el nombre: se renombra también.
+      const f = await leerArchivo(env, ARCHIVO_INSPIRACIONES);
+      if (f.existe) {
+        const filasI = csvLeer(f.texto.replace(/^\uFEFF/, ""));
+        let n = 0;
+        filasI.slice(1).forEach(r => {
+          const r2 = renombres.get(clave(r[0], r[1]));
+          if (r2) { r[0] = r2[0]; r[1] = r2[1]; n++; }
+        });
+        if (n) {
+          const csv = filasI.map(r => r.map(csvCampo).join(",")).join("\n") + "\n";
+          await escribirArchivo(env, ARCHIVO_INSPIRACIONES, textoABase64(csv), f.sha, `Dupes: nombre corregido de ${n === 1 ? "1 perfume" : n + " perfumes"}`);
+        }
+      }
+    }
+  }
+
   if (descartar.length || restaurar.length) {
     const d = await leerArchivo(env, ARCHIVO_DESCARTADOS);
     const mapa = new Map();
@@ -340,7 +402,7 @@ async function rutaCambios(request, env) {
     }
   }
 
-  return responder({ ok: true, agregados, fotos: fotosCambiadas });
+  return responder({ ok: true, agregados, fotos: fotosCambiadas, editados });
 }
 
 // Sube una foto sacada en tienda a la carpeta fotos/ del repositorio.

@@ -494,6 +494,15 @@
     .sug .cero { color: #B9AEC0; }
     .sug .acc { white-space: nowrap; text-align: right; }
     .sug tr.en-curso { background: #F6EFF9; }
+    /* Editar */
+    .ed-resultados { display: grid; gap: 6px; margin-bottom: 8px; }
+    .ed-hallado { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; width: 100%; padding: 10px 14px; border: 1px solid var(--linea); border-radius: var(--r-sm); background: #fff; cursor: pointer; font: inherit; }
+    .ed-hallado:hover, .ed-hallado:focus-visible { border-color: var(--violeta); background: #FBF8FD; outline: 0; }
+    .ed-hallado .nombre { font-weight: 600; font-size: 14px; }
+    .ed-hallado .meta { font-size: 12px; color: var(--humo); white-space: nowrap; }
+    .ed-titulo { font-size: 15px; font-weight: 600; margin: 12px 0 12px; }
+    .campo textarea { padding: 10px 12px; border: 1px solid var(--linea); border-radius: var(--r-sm); background: #fff; font: inherit; font-size: 14px; resize: vertical; }
+    .campo textarea:focus { outline: 0; border-color: var(--violeta); box-shadow: 0 0 0 3px var(--violeta-suave); }
     /* Fotos */
     .lista-fotos { max-height: 640px; overflow: auto; border: 1px solid var(--linea); border-radius: var(--r-md); }
     .ficha-foto { display: grid; grid-template-columns: 112px 112px 1fr; grid-template-areas: "ahora sug info"; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #EFEAF1; align-items: start; }
@@ -743,6 +752,38 @@
         <button class="btn" id="btnGuardarPerfume" onclick="guardarNuevoPerfumeAdmin()">Agregar a los cambios</button>
       </div>
       <div id="msgNuevoPerfume"></div>
+    </section>
+
+    <section class="panel" id="panelEditar">
+      <h3>Editar un perfume del catálogo</h3>
+      <p class="desc">Busca el perfume y corrige lo que necesites: link de Fragrantica, nombre, marca, SKU, precio, acordes, género, línea, dupe o foto. Se guarda al momento y llega a las tiendas en cerca de 3 minutos. También puedes pulsar “Editar” en el catálogo completo, más abajo.</p>
+      <div class="barra-sugerencias">
+        <label class="sr-only" for="edBuscar">Buscar perfume para editar</label>
+        <input type="search" id="edBuscar" placeholder="Buscar por nombre, marca o SKU" oninput="buscarParaEditar()" />
+      </div>
+      <div class="ed-resultados" id="edResultados"></div>
+      <div id="edFormulario" class="hidden">
+        <h4 class="ed-titulo">Editando: <span id="edTitulo"></span></h4>
+        <div class="form-grid">
+          <div class="campo ancho"><label for="edUrl">Link de Fragrantica <span class="ayuda">(si lo cambias, pulsa “Completar desde el link” para traer los acordes, el género y las notas del nuevo)</span></label><input type="text" id="edUrl" placeholder="https://www.fragrantica.es/perfume/…" /></div>
+          <div class="campo"><label for="edNombre">Nombre del perfume</label><input type="text" id="edNombre" /></div>
+          <div class="campo"><label for="edMarca">Marca</label><input type="text" id="edMarca" /></div>
+          <div class="campo ancho"><label for="edAcordes">Acordes <span class="ayuda">(separados por coma, del más fuerte al más suave)</span></label><input type="text" id="edAcordes" /></div>
+          <div class="campo"><label for="edSku">Código / SKU</label><input type="text" id="edSku" /></div>
+          <div class="campo"><label for="edCat">Línea</label><select id="edCat"><option value="Árabe">Árabe</option><option value="Diseñador">Diseñador</option></select></div>
+          <div class="campo"><label for="edGen">Género</label><select id="edGen"><option value="Para Hombres">Hombre</option><option value="Para Mujeres">Mujer</option><option value="Para Hombres y Mujeres">Unisex</option></select></div>
+          <div class="campo"><label for="edPrecio">Precio en tienda</label><input type="text" id="edPrecio" /></div>
+          <div class="campo ancho"><label for="edNotas">Notas <span class="ayuda">(opcional)</span></label><textarea id="edNotas" rows="2"></textarea></div>
+          <div class="campo ancho"><label for="edInspirado">Inspirado en <span class="ayuda">(link de Fragrantica del original o Marca | Nombre; vacío si no es dupe)</span></label><input type="text" id="edInspirado" /></div>
+          <div class="campo ancho"><label for="edFoto">Foto propia <span class="ayuda">(vacío = se usa la foto del link de Fragrantica)</span></label><input type="text" id="edFoto" placeholder="https://… (clic derecho sobre la foto → Copiar dirección de la imagen)" /></div>
+        </div>
+        <div class="fila-botones">
+          <button class="btn btn-sec" id="btnEdAuto" onclick="completarEdicionDesdeLink()">Completar desde el link</button>
+          <button class="btn" id="btnEdGuardar" onclick="guardarEdicion()">Guardar cambios de este perfume</button>
+          <button class="btn btn-sec" onclick="cerrarEdicion()">Cancelar</button>
+        </div>
+      </div>
+      <div id="msgEditar"></div>
     </section>
 
     <section class="panel" id="panelInspiraciones">
@@ -2429,11 +2470,11 @@ function actualizarPanelesAdmin() {
   renderInspiraciones();
   renderFotos();
   document.getElementById("tituloInventarioTotal").innerText = `Catálogo completo (${catalogoBruto.length} perfumes)`;
-  const catHtml = catalogoBruto.map(c =>
-    `<tr><td>${esc(c.SKU)}</td><td>${esc(c.Perfume)}</td><td>${esc(c.Marca)}</td><td>${esc(c.Categoria)}</td><td>${esc(etiquetaGenero(c.Genero))}</td><td>${esc(c.Precio)}</td><td>${esc(c.Acordes)}</td></tr>`
+  const catHtml = catalogoBruto.map((c, i) =>
+    `<tr><td><button class="btn-mini" data-editar="${i}">Editar</button></td><td>${esc(c.SKU)}</td><td>${esc(c.Perfume)}</td><td>${esc(c.Marca)}</td><td>${esc(c.Categoria)}</td><td>${esc(etiquetaGenero(c.Genero))}</td><td>${esc(c.Precio)}</td><td>${esc(c.Acordes)}</td></tr>`
   ).join("");
   document.getElementById("tablaCatalogoAdmin").innerHTML =
-    `<table><thead><tr><th>SKU</th><th>Perfume</th><th>Marca</th><th>Línea</th><th>Género</th><th>Precio</th><th>Acordes</th></tr></thead><tbody>${catHtml}</tbody></table>`;
+    `<table><thead><tr><th><span class="sr-only">Editar</span></th><th>SKU</th><th>Perfume</th><th>Marca</th><th>Línea</th><th>Género</th><th>Precio</th><th>Acordes</th></tr></thead><tbody>${catHtml}</tbody></table>`;
 }
 
 function renderSugerencias() {
@@ -2887,6 +2928,8 @@ async function subirRelbaseNube() {
 document.getElementById("tablaRadarContainer").addEventListener("click", clicSugerencias);
 document.getElementById("tablaInspiraciones").addEventListener("change", cambioInspiracion);
 document.getElementById("listaFotos").addEventListener("click", clicFotos);
+document.getElementById("edResultados").addEventListener("click", clicEditar);
+document.getElementById("tablaCatalogoAdmin").addEventListener("click", clicEditar);
 document.getElementById("listaFotos").addEventListener("keydown", teclaFotos);
 document.getElementById("listaFotos").addEventListener("change", subirFotoFicha);
 window.addEventListener("beforeunload", ev => { if (hayCambios()) { ev.preventDefault(); ev.returnValue = ""; } });
@@ -3112,6 +3155,167 @@ async function subirFotoFicha(ev) {
   if (!r.ok) { mensajeFicha(ficha, `No se subió: ${r.error}`, true); return; }
   fotosLocales[r.ruta] = dataUrl;
   fijarFoto(ficha.dataset.sku, ficha.dataset.perfume, r.ruta);
+}
+
+// ---------- Editar un perfume del catálogo ----------
+// Corrige cualquier dato de un perfume que ya está en el catálogo. Se guarda al
+// momento (no pasa por la barra de cambios) y llega a las tiendas en unos minutos.
+let edicionActual = null;   // fila del catálogo tal como está guardada
+
+function buscarParaEditar() {
+  const cont = document.getElementById("edResultados");
+  const q = quitarTildes(document.getElementById("edBuscar").value).trim();
+  if (!q) { cont.innerHTML = ""; return; }
+  const hallados = catalogoBruto.map((f, i) => ({ f, i }))
+    .filter(x => x.f.Perfume && quitarTildes(`${x.f.Perfume} ${x.f.Marca} ${x.f.SKU}`).includes(q))
+    .slice(0, 8);
+  cont.innerHTML = hallados.length
+    ? hallados.map(x => `<button class="ed-hallado" data-editar="${x.i}"><span class="nombre">${esc(titulo(x.f.Perfume))}</span><span class="meta">${esc(titulo(x.f.Marca))}, SKU ${esc(x.f.SKU)}</span></button>`).join("")
+    : `<div class="vacio-tabla">Ningún perfume del catálogo coincide con “${esc(document.getElementById("edBuscar").value.trim())}”.</div>`;
+}
+
+function clicEditar(ev) {
+  const b = ev.target.closest("[data-editar]");
+  if (!b) return;
+  abrirEdicion(catalogoBruto[Number(b.dataset.editar)]);
+}
+
+function abrirEdicion(fila) {
+  if (!fila) return;
+  edicionActual = fila;
+  const actual = conFotoPendiente(fila);
+  const ins = textoInspiracionDe(fila);
+  const val = (id, v) => { document.getElementById(id).value = v ?? ""; };
+  val("edUrl", fila.URL_Fragrantica);
+  val("edNombre", fila.Perfume);
+  val("edMarca", fila.Marca);
+  val("edAcordes", fila.Acordes);
+  val("edSku", fila.SKU);
+  val("edPrecio", fila.Precio);
+  val("edNotas", fila.Notas);
+  val("edInspirado", ins ? inspiracionLegible(ins.Inspirado_en) : "");
+  val("edFoto", tieneFotoPropia(actual) ? fotoGuardada(actual) : "");
+  const cat = document.getElementById("edCat");
+  if (![...cat.options].some(o => o.value === fila.Categoria)) cat.add(new Option(fila.Categoria || "(vacía)", fila.Categoria || ""));
+  cat.value = fila.Categoria || "";
+  document.getElementById("edGen").value = ["Para Hombres", "Para Mujeres", "Para Hombres y Mujeres"].includes(fila.Genero) ? fila.Genero : "Para Hombres y Mujeres";
+  document.getElementById("edTitulo").textContent = titulo(fila.Perfume);
+  document.getElementById("msgEditar").innerHTML = "";
+  document.getElementById("edFormulario").classList.remove("hidden");
+  document.getElementById("edResultados").innerHTML = "";
+  document.getElementById("edBuscar").value = "";
+  document.getElementById("panelEditar").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cerrarEdicion() {
+  edicionActual = null;
+  document.getElementById("edFormulario").classList.add("hidden");
+  document.getElementById("msgEditar").innerHTML = "";
+}
+
+async function completarEdicionDesdeLink() {
+  const url = document.getElementById("edUrl").value.trim();
+  const msg = document.getElementById("msgEditar");
+  if (!/fragrantica\./i.test(url)) { msg.innerHTML = `<div class="alert-warn">Pega primero el link de Fragrantica del perfume.</div>`; return; }
+  const btn = document.getElementById("btnEdAuto");
+  btn.disabled = true;
+  msg.innerHTML = `<div class="alert-info">Leyendo los acordes, el género y las notas en Fragrantica…</div>`;
+  try {
+    const d = await extraerFragrantica(url);
+    if (d.error) { msg.innerHTML = `<div class="alert-warn">${esc(d.error)}</div>`; return; }
+    if (d.acordes?.length) document.getElementById("edAcordes").value = d.acordes.join(", ");
+    if (d.genero) document.getElementById("edGen").value = d.genero;
+    if (d.notas) document.getElementById("edNotas").value = d.notas;
+    msg.innerHTML = `<div class="alert-success">Listo: acordes, género${d.notas ? " y notas" : ""} tomados del link. Revisa y pulsa “Guardar cambios de este perfume”.</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function guardarEdicion() {
+  const orig = edicionActual;
+  if (!orig) return;
+  const msg = document.getElementById("msgEditar");
+  const leer = id => document.getElementById(id).value.trim();
+  const url = leer("edUrl");
+  const campos = {
+    SKU: leer("edSku"), Perfume: leer("edNombre"), Marca: leer("edMarca"),
+    Categoria: document.getElementById("edCat").value, Genero: document.getElementById("edGen").value,
+    Precio: leer("edPrecio"), Acordes: leer("edAcordes"), Notas: leer("edNotas"), URL_Fragrantica: url
+  };
+  const faltan = [!campos.Perfume && "el nombre", !campos.SKU && "el SKU", !campos.Acordes && "los acordes"].filter(Boolean);
+  if (faltan.length) { msg.innerHTML = `<div class="alert-warn">Falta completar: ${faltan.join(", ")}.</div>`; return; }
+  if (url && !/^https:\/\/(www\.)?fragrantica\.[a-z.]+\/perfume\/\S+-\d+\.html/i.test(url)) {
+    msg.innerHTML = `<div class="alert-warn">El link de Fragrantica no se ve bien. Copia la dirección completa de la página del perfume (termina en un número y .html).</div>`;
+    return;
+  }
+
+  // Foto: la propia si se escribió una; si no, la del link (nuevo o el mismo).
+  const fotoTexto = leer("edFoto");
+  const actual = conFotoPendiente(orig);
+  let foto;
+  if (fotoTexto && fotoTexto === fotoGuardada(actual)) foto = fotoTexto;
+  else {
+    const r = validarLinkFoto(fotoTexto);
+    if (r.error) { msg.innerHTML = `<div class="alert-warn">Foto: ${esc(r.error)}</div>`; return; }
+    const mismoLink = url === String(orig.URL_Fragrantica || "").trim();
+    foto = r.valor || (mismoLink && !tieneFotoPropia(actual) ? fotoGuardada(orig) : fotoDelLink({ URL_Fragrantica: url }));
+  }
+  campos.Foto_URL = foto;
+
+  // Dupe: se guarda junto con el perfume, con su SKU y nombre nuevos.
+  const insActual = textoInspiracionDe(orig);
+  const insGuardada = inspiracionesGuardadas.find(f => claveFilaCatalogo(f.SKU, f.Perfume) === claveFilaCatalogo(orig.SKU, orig.Perfume));
+  const insForm = normalizarInspiracion(leer("edInspirado"));
+  if (insForm.error) { msg.innerHTML = `<div class="alert-warn">Inspirado en: ${esc(insForm.error)}</div>`; return; }
+  let insFinal = insForm.texto;
+  // Si no se tocó el campo, se conserva tal cual (con el id de Fragrantica que no se muestra).
+  if (insActual && leer("edInspirado") === inspiracionLegible(insActual.Inspirado_en)) insFinal = insActual.Inspirado_en;
+  const kVieja = claveFilaCatalogo(orig.SKU, orig.Perfume), kNueva = claveFilaCatalogo(campos.SKU, campos.Perfume);
+  const insCambia = (insGuardada ? insGuardada.Inspirado_en : "") !== (insFinal || "");
+
+  const cambiados = Object.keys(campos).filter(c => String(orig[c] ?? "").trim() !== campos[c]);
+  if (!cambiados.length && !insCambia) { msg.innerHTML = `<div class="alert-info">No cambiaste nada.</div>`; return; }
+
+  if (kNueva !== kVieja && catalogoBruto.some(f => f !== orig && claveFilaCatalogo(f.SKU, f.Perfume) === kNueva)) {
+    msg.innerHTML = `<div class="alert-warn">Ya hay otro perfume con el SKU ${esc(campos.SKU)} y ese mismo nombre.</div>`;
+    return;
+  }
+  if (limpiarSku(campos.SKU) !== limpiarSku(orig.SKU)) {
+    const otro = catalogoBruto.find(f => f !== orig && limpiarSku(f.SKU) === limpiarSku(campos.SKU));
+    if (otro && !confirm(`El SKU ${campos.SKU} ya lo tiene “${titulo(otro.Perfume)}”. ¿Guardar igual?`)) return;
+  }
+
+  const btn = document.getElementById("btnEdGuardar");
+  btn.disabled = true;
+  msg.innerHTML = `<div class="alert-info">Guardando…</div>`;
+  const cuerpo = { editar: [{ SKU: orig.SKU, Perfume: orig.Perfume, campos }] };
+  if (insCambia) cuerpo.inspiraciones = [{ SKU: campos.SKU, Perfume: campos.Perfume, Inspirado_en: insFinal || "", Fuente: "Administración" }];
+  const r = await api("cambios", cuerpo);
+  btn.disabled = false;
+  if (!r.ok) {
+    if (adminAutenticado) msg.innerHTML = `<div class="alert-warn">No se guardó: ${esc(r.error)}</div>`;
+    return;
+  }
+
+  // Al día en esta pantalla: catálogo, foto pendiente y dupe.
+  Object.assign(orig, campos);
+  fotosPendientes.delete(kVieja);
+  const quitar = lista => lista.filter(f => claveFilaCatalogo(f.SKU, f.Perfume) !== kVieja && claveFilaCatalogo(f.SKU, f.Perfume) !== kNueva);
+  inspiraciones = quitar(inspiraciones);
+  inspiracionesGuardadas = quitar(inspiracionesGuardadas);
+  if (insFinal) {
+    const fila = { SKU: campos.SKU, Perfume: campos.Perfume, Inspirado_en: insFinal, Fuente: insCambia ? "Administración" : (insActual?.Fuente || ""), Fecha: new Date().toISOString().slice(0, 10) };
+    inspiraciones.push(fila);
+    inspiracionesGuardadas.push({ ...fila });
+  }
+  reconstruirIndiceInspiraciones();
+  actualizarVistaTienda();
+  actualizarPanelesAdmin();
+  actualizarBarraCambios();
+  cerrarEdicion();
+  document.getElementById("msgEditar").innerHTML =
+    `<div class="alert-success">Guardado: ${esc(titulo(campos.Perfume))}. El cambio estará en todas las tiendas en cerca de 3 minutos.</div>`;
 }
 
 // ===== Arranque =====
